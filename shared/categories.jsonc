@@ -1,0 +1,19 @@
+[
+  // Movie categories
+  { "name": "Blu-ray", "id": 1, "type": "movie" },
+  { "name": "Animation/Anime", "id": 2, "type": "movie" },
+  { "name": "Video/HD", "id": 3, "type": "movie" },
+  { "name": "Movies/3D", "id": 4, "type": "movie" },
+  { "name": "Movies/DVD-R", "id": 5, "type": "movie" },
+  { "name": "Movies", "id": 6, "type": "movie" },
+  { "name": "Movies/HD", "id": 7, "type": "movie" },
+  { "name": "Movies/BG", "id": 8, "type": "movie" },
+  { "name": "BG Audio Филми", "id": 38, "type": "movie" },
+  { "name": "BG Audio Анимационен филм", "id": 42, "type": "movie" },
+  // TV categories
+  { "name": "Series", "id": 11, "type": "tv" },
+  { "name": "Series/HD", "id": 12, "type": "tv" },
+  { "name": "BG Audio Сериали", "id": 40, "type": "tv" },
+  { "name": "BG Audio Анимационен сериал", "id": 41, "type": "tv" },
+  { "name": "БГ Сериали", "id": 39, "type": "tv" }
+]

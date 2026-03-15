@@ -1,0 +1,8 @@
+[
+  { "name": "Full Disc", "id": 1 },
+  { "name": "Remux", "id": 2 },
+  { "name": "Encode", "id": 3 },
+  { "name": "WEB-DL", "id": 4 },
+  { "name": "WEBRip", "id": 5 },
+  { "name": "HDTV", "id": 6 }
+]

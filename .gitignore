@@ -1,0 +1,10 @@
+# Ignore output contents but keep the directory
+output/*
+!output/.gitkeep
+
+# Config with secrets (copy from config.example.jsonc)
+config.jsonc
+
+# Binary tools (downloaded by install script)
+tools/*.exe
+!tools/.gitkeep
