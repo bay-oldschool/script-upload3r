@@ -23,7 +23,7 @@ param(
 
 $ErrorActionPreference = 'Stop'
 $PSScriptRoot = Split-Path -Parent -Path $MyInvocation.MyCommand.Definition
-$directory = $directory.TrimEnd('"').TrimEnd('\')
+$directory = $directory.TrimEnd('"').Trim().TrimEnd('\')
 if (-not $configfile) { $configfile = Join-Path "$PSScriptRoot/.." "config.jsonc" }
 
 if (Test-Path -LiteralPath $directory -PathType Leaf) {
@@ -145,16 +145,28 @@ foreach ($item in $response.results[0..4]) {
     $outputLines.Add("    TMDB ID:      $($item.id)")
     $outputLines.Add("    Description:  $($item.overview)")
 
-    if ($GoogleApiKey -and $TranslateLang -and $item.overview) {
+    # Try TMDB native translation first, fall back to Google Translate
+    if ($TranslateLang -and $item.overview) {
+        $translated = $null
         try {
-            $transUrl = "https://translation.googleapis.com/language/translate/v2?key=$GoogleApiKey"
-            $transBody = @{ q = $item.overview; target = $TranslateLang; source = 'en' } | ConvertTo-Json
-            $transResp = Invoke-RestMethod -Uri $transUrl -Method POST -ContentType 'application/json' -Body $transBody
-            $translated = $transResp.data.translations[0].translatedText
-            $outputLines.Add("    ($TranslateLang):  $translated")
+            $bgItem = Invoke-RestMethod -Uri "https://api.themoviedb.org/3/$mediaType/$($item.id)?api_key=$TmdbApiKey&language=$TranslateLang"
+            $bgOverview = $bgItem.overview
+            if ($bgOverview -and $bgOverview -ne $item.overview) {
+                $translated = $bgOverview
+            }
+        } catch {}
+
+        if (-not $translated -and $GoogleApiKey) {
+            try {
+                $transUrl = "https://translation.googleapis.com/language/translate/v2?key=$GoogleApiKey"
+                $transBody = @{ q = $item.overview; target = $TranslateLang; source = 'en' } | ConvertTo-Json
+                $transResp = Invoke-RestMethod -Uri $transUrl -Method POST -ContentType 'application/json' -Body $transBody
+                $translated = $transResp.data.translations[0].translatedText
+            } catch {}
         }
-        catch {
-            $outputLines.Add("    ($TranslateLang):  (translation failed)")
+
+        if ($translated) {
+            $outputLines.Add("    ($TranslateLang):  $translated")
         }
     }
 

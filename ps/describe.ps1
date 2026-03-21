@@ -24,7 +24,7 @@ param(
 $ErrorActionPreference = 'Stop'
 $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
 $PSScriptRoot = Split-Path -Parent -Path $MyInvocation.MyCommand.Definition
-$directory = $directory.TrimEnd('"').TrimEnd('\')
+$directory = $directory.TrimEnd('"').Trim().TrimEnd('\')
 
 if (Test-Path -LiteralPath $directory -PathType Leaf) {
     $singleFile = $directory
@@ -249,7 +249,7 @@ if (Test-Path -LiteralPath $ImdbFile) {
 # Read system prompt from external UTF-8 file (avoids PS5.1 code page corruption)
 $systemFile = "$PSScriptRoot/../shared/ai_system_prompt.txt"
 
-# Write user prompt to temp file (plain text data, like describe.sh)
+# Write user prompt to temp file (plain text data)
 $promptFile = [System.IO.Path]::GetTempFileName()
 $mediaLine = $(if ($mediaSummary) { "`nTechnical: $mediaSummary" } else { "" })
 $bgTitleLine = $(if ($bgTitle) { "`nBG Title: $bgTitle" } else { "" })
@@ -270,7 +270,7 @@ Directory: $dirName$castLine2$directorLine$genreLine2$ratingLine2$rtLine2$mediaL
 "@
 [System.IO.File]::WriteAllText($promptFile, $promptContent, $utf8NoBom)
 
-# Call ai_call.ps1 (shared with describe.sh)
+# Call ai_call.ps1
 $callArgs = @{
     promptfile = $promptFile
     outputfile = $OutputFile

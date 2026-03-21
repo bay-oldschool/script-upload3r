@@ -43,8 +43,8 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
-$PSScriptRoot = Split-Path -Parent -Path $MyInvocation.MyCommand.Definition
-if ($directory) { $directory = $directory.TrimEnd('"').TrimEnd('\') }
+$PSScriptRoot = Split-Path -Parent -Path (Split-Path -Parent -Path $MyInvocation.MyCommand.Definition)
+if ($directory) { $directory = $directory.TrimEnd('"').Trim().TrimEnd('\') }
 
 function Show-Help {
     Write-Host @"
@@ -206,7 +206,7 @@ if ($runSteps -contains 6) {
 
 if ($runSteps -contains 7) {
     Show-Step "Upload Screenshots"
-    & "$PSScriptRoot/ps/upload.ps1" $directory $configfile
+    & "$PSScriptRoot/ps/screens_upload.ps1" $directory $configfile
     Write-Host ""
 }
 
@@ -227,4 +227,5 @@ if (Test-Path -LiteralPath $directory -PathType Leaf) {
 Write-Host "========================================" -ForegroundColor Green
 Write-Host "  Done! Files for: $outputName" -ForegroundColor Green
 Write-Host "========================================" -ForegroundColor Green
-Get-ChildItem -LiteralPath "$PSScriptRoot/output" | Where-Object { $_.Name -like "${outputName}*" } | Select-Object -Property Name, Length
+$escapedName = [WildcardPattern]::Escape($outputName)
+Get-ChildItem -LiteralPath "$PSScriptRoot/output" | Where-Object { $_.Name -like "${escapedName}*" } | Select-Object -Property Name, Length

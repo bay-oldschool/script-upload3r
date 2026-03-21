@@ -23,7 +23,7 @@ param(
 $ErrorActionPreference = 'Stop'
 $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
 $PSScriptRoot = Split-Path -Parent -Path $MyInvocation.MyCommand.Definition
-$directory = $directory.TrimEnd('"').TrimEnd('\')
+$directory = $directory.TrimEnd('"').Trim().TrimEnd('\')
 $RootDir = "$PSScriptRoot/.."
 $OutDir = "$RootDir/output"
 
@@ -76,18 +76,30 @@ if (Test-Path -LiteralPath $TmdbFile) {
     $tmdbContent = Get-Content -LiteralPath $TmdbFile -Encoding UTF8
     $bgLine = $tmdbContent | Where-Object { $_ -match '^\s+BG Title:' } | Select-Object -First 1
     if ($bgLine) { $BgTitle = ($bgLine -replace '^\s+BG Title:\s*', '').Trim() }
-    # Extract English title from TMDB best result line: "[1] Title (year)"
-    $tmdbFirstLine = $tmdbContent | Where-Object { $_ -match '^\[1\]' } | Select-Object -First 1
-    if ($tmdbFirstLine -and $tmdbFirstLine -match '^\[1\]\s+(.+?)\s+\(\d{4}\)$') { $TmdbEnTitle = $matches[1] }
-    # Get banner from the best-matched result (the one with BG Title after its Banner line)
+    # Extract English title and banner from the best-matched result (the one with BG Title)
     if ($BgTitle) {
         for ($i = 0; $i -lt $tmdbContent.Count; $i++) {
-            if ($tmdbContent[$i] -match '^\s+BG Title:' -and $i -gt 0 -and $tmdbContent[$i-1] -match '^\s+Banner:') {
-                $BannerUrl = ($tmdbContent[$i-1] -replace '^\s+Banner:\s*', '').Trim()
-                if ($BannerUrl -ne '(none)') { break }
-                $BannerUrl = ''
+            if ($tmdbContent[$i] -match '^\s+BG Title:') {
+                # Walk back to find the result header line [N] Title (year)
+                for ($j = $i - 1; $j -ge 0; $j--) {
+                    if ($tmdbContent[$j] -match '^\[\d+\]\s+(.+?)\s+\(\d{4}\)$') {
+                        $TmdbEnTitle = $matches[1]
+                        break
+                    }
+                }
+                # Walk back to find the Banner line
+                if ($i -gt 0 -and $tmdbContent[$i-1] -match '^\s+Banner:') {
+                    $BannerUrl = ($tmdbContent[$i-1] -replace '^\s+Banner:\s*', '').Trim()
+                    if ($BannerUrl -eq '(none)') { $BannerUrl = '' }
+                }
+                if ($TmdbEnTitle) { break }
             }
         }
+    }
+    # Fallback: English title from first result
+    if (-not $TmdbEnTitle) {
+        $tmdbFirstLine = $tmdbContent | Where-Object { $_ -match '^\[1\]' } | Select-Object -First 1
+        if ($tmdbFirstLine -and $tmdbFirstLine -match '^\[1\]\s+(.+?)\s+\(\d{4}\)$') { $TmdbEnTitle = $matches[1] }
     }
     # Fallback: first non-empty banner from any result
     if (-not $BannerUrl) {
@@ -108,6 +120,13 @@ if ($BgTitle -and $BgTitle -ne $enHeader) {
 # Build description body
 $Description = ''
 
+$TmdbBgDesc = ''
+if (Test-Path -LiteralPath $TmdbFile) {
+    $tmdbLines = Get-Content -LiteralPath $TmdbFile -Encoding UTF8
+    $bgDescLine = $tmdbLines | Where-Object { $_ -match '^\s+\(bg\):' } | Select-Object -First 1
+    if ($bgDescLine) { $TmdbBgDesc = ($bgDescLine -replace '^\s+\(bg\):\s*', '').Trim() }
+}
+
 if (Test-Path -LiteralPath $GeminiFile) {
     $Description = (Get-Content -LiteralPath $GeminiFile -Encoding UTF8 -Raw).TrimEnd()
 } elseif (Test-Path -LiteralPath $ImdbFile) {
@@ -125,43 +144,154 @@ if (Test-Path -LiteralPath $GeminiFile) {
     $overviewLines = @()
     foreach ($line in $imdbContent) {
         if ($line -match '^Overview:') { $inOverview = $true; continue }
-        if ($inOverview -and $line -match '^[A-Za-z][A-Za-z ()]*:\s') { break }
+        if ($inOverview -and $line -match '^[A-Za-z][A-Za-z ()]*:\s*$|^[A-Za-z][A-Za-z ()]*:\s') { break }
         if ($inOverview -and $line.Trim()) { $overviewLines += $line }
     }
     $overview = $overviewLines -join "`n"
 
-    $Description = "[b]${title}[/b]"
-    if ($tagline)  { $Description += "`n[i]${tagline}[/i]" }
-    if ($director) { $Description += "`n[b]Director:[/b] ${director}" }
-    if ($cast)     { $Description += "`n[b]Cast:[/b] ${cast}" }
-    if ($rating)   { $Description += "`n[b]Rating:[/b] ${rating}" }
-    if ($genres)   { $Description += "`n[b]Genres:[/b] ${genres}" }
-    if ($runtime)  { $Description += "`n[b]Runtime:[/b] ${runtime}" }
-    if ($overview) { $Description += "`n`n${overview}" }
+    # Extract trailers (lines after "Trailers:" with URL pattern)
+    $trailerLinks = @()
+    $inTrailers = $false
+    foreach ($line in $imdbContent) {
+        if ($line -match '^Trailers:') { $inTrailers = $true; continue }
+        if ($inTrailers -and $line.Trim() -eq '') { break }
+        if ($inTrailers -and $line -match '^\s+(.+?):\s+(https://\S+)') {
+            $trailerLinks += @{ name = $matches[1]; url = $matches[2] }
+        }
+    }
+
+    # Build emojis from code points (PS5.1 encoding safety)
+    $e_genre   = [char]::ConvertFromUtf32(0x1F3AD)  # theater masks
+    $e_star    = [char]::ConvertFromUtf32(0x2B50)    # star
+    $e_trailer = [char]::ConvertFromUtf32(0x1F4FA)   # film projector
+    $e_plot    = [char]::ConvertFromUtf32(0x1F4D6)   # open book
+    $e_people  = [char]::ConvertFromUtf32(0x1F465)   # people
+    $e_dir     = [char]::ConvertFromUtf32(0x1F3AC)   # clapperboard
+    $e_clock   = [char]::ConvertFromUtf32(0x23F0)    # alarm clock
+    $e_globe   = [char]::ConvertFromUtf32(0x1F30D)   # globe
+
+    $Description = ""
+    if ($genres)   { $Description += "${e_genre} [b]Genres:[/b] ${genres}`n`n" }
+    if ($rating)   { $Description += "${e_star} [b]Rating:[/b] ${rating}`n`n" }
+    $Description += "[b]${title}[/b]"
+    if ($tagline) { $Description += " [i]- ${tagline}[/i]" }
+    $Description += "`n"
+
+    if ($overview) { $Description += "`n${e_plot} [b]Plot:[/b]`n${overview}`n" }
+    if ($TmdbBgDesc) { $Description += "`n${e_globe} [b]BG:[/b]`n${TmdbBgDesc}`n" }
+    if ($director) { $Description += "`n${e_dir} [b]Director:[/b] ${director}`n" }
+    if ($cast)     { $Description += "`n${e_people} [b]Cast:[/b] ${cast}`n" }
+} elseif ($TmdbBgDesc) {
+    $e_globe = [char]::ConvertFromUtf32(0x1F30D)
+    $Description = "${e_globe} [b]BG:[/b]`n${TmdbBgDesc}"
 }
 
-# Extract RT rating from IMDB file
-$RtRating = ''
+# Extract RT ratings, runtime, countries and trailers from IMDB file
+$RtCritics = ''
+$RtAudience = ''
+$imdbRuntime = ''
+$imdbCountries = ''
+$imdbTrailers = @()
 if (Test-Path -LiteralPath $ImdbFile) {
-    $rtLine = Get-Content -LiteralPath $ImdbFile -Encoding UTF8 | Where-Object { $_ -match '^RT Rating:' } | Select-Object -First 1
-    if ($rtLine) { $RtRating = ($rtLine -replace '^RT Rating:\s*', '').Trim() }
+    $imdbLines = Get-Content -LiteralPath $ImdbFile -Encoding UTF8
+    $criticsLine = $imdbLines | Where-Object { $_ -match '^RT Critics:' } | Select-Object -First 1
+    if ($criticsLine) { $RtCritics = ($criticsLine -replace '^RT Critics:\s*', '').Trim() }
+    $audienceLine = $imdbLines | Where-Object { $_ -match '^RT Audience:' } | Select-Object -First 1
+    if ($audienceLine) { $RtAudience = ($audienceLine -replace '^RT Audience:\s*', '').Trim() }
+    $runtimeLine = $imdbLines | Where-Object { $_ -match '^Runtime:' } | Select-Object -First 1
+    if ($runtimeLine) { $imdbRuntime = ($runtimeLine -replace '^Runtime:\s*', '').Trim() }
+    $countriesLine = $imdbLines | Where-Object { $_ -match '^Countries:' } | Select-Object -First 1
+    if ($countriesLine) { $imdbCountries = ($countriesLine -replace '^Countries:\s*', '').Trim() }
+    # Extract trailers
+    $inTrailers = $false
+    foreach ($tl in $imdbLines) {
+        if ($tl -match '^Trailers:') { $inTrailers = $true; continue }
+        if ($inTrailers -and $tl.Trim() -eq '') { break }
+        if ($inTrailers -and $tl -match '^\s+(.+?):\s+(https://\S+)') {
+            $imdbTrailers += @{ name = $matches[1]; url = $matches[2] }
+        }
+    }
 }
 
-# Insert RT rating after IMDB rating line in description
-if ($RtRating) {
+# Insert runtime and countries after genre line
+if ($imdbRuntime -or $imdbCountries) {
+    $e_clock = [char]::ConvertFromUtf32(0x23F0)    # alarm clock
+    $e_globe = [char]::ConvertFromUtf32(0x1F30D)   # globe
+    $descLines = $Description -split "`n"
+    $newLines = @()
+    $inserted = $false
+    foreach ($dl in $descLines) {
+        $newLines += $dl
+        # Match genre line: English "Genres"/"Genre" or Bulgarian char codes for "Жанр"
+        $bgGenre = [char]0x0416 + [char]0x0430 + [char]0x043D + [char]0x0440  # Жанр
+        if (-not $inserted -and ($dl -match '\[b\].{0,15}(Genres|Genre)' -or $dl.Contains($bgGenre))) {
+            $newLines += ''
+            if ($imdbRuntime) { $newLines += "${e_clock} [b]Runtime:[/b] ${imdbRuntime}" }
+            if ($imdbCountries) { $newLines += "${e_globe} [b]Countries:[/b] ${imdbCountries}" }
+            $newLines += ''
+            $inserted = $true
+        }
+    }
+    $Description = $newLines -join "`n"
+}
+
+# Insert RT ratings after IMDB rating line in description
+if ($RtCritics -or $RtAudience) {
     $tomato = [char]::ConvertFromUtf32(0x1F345)
-    $rtInsert = "${tomato} [b]Rotten Tomatoes:[/b] ${RtRating}"
+    $popcorn = [char]::ConvertFromUtf32(0x1F37F)
+    # "RT Критици" / "RT Публика" as char arrays to avoid PS5.1 encoding issues
+    $lblCritics = "RT " + [char]0x041A + [char]0x0440 + [char]0x0438 + [char]0x0442 + [char]0x0438 + [char]0x0446 + [char]0x0438
+    $lblAudience = "RT " + [char]0x041F + [char]0x0443 + [char]0x0431 + [char]0x043B + [char]0x0438 + [char]0x043A + [char]0x0430
     $descLines = $Description -split "`n"
     $newLines = @()
     $inserted = $false
     foreach ($dl in $descLines) {
         $newLines += $dl
         if (-not $inserted -and $dl -match '\[b\].{0,15}:\[/b\].*\d+/10') {
-            $newLines += $rtInsert
+            if ($RtCritics) { $newLines += "${tomato} [b]${lblCritics}:[/b] ${RtCritics}" }
+            if ($RtAudience) { $newLines += "${popcorn} [b]${lblAudience}:[/b] ${RtAudience}" }
             $inserted = $true
         }
     }
     $Description = $newLines -join "`n"
+}
+
+# Insert trailer links after: RT ratings > IMDB rating > genre (first found)
+if ($imdbTrailers.Count -gt 0) {
+    $e_trailer = [char]::ConvertFromUtf32(0x1F4FA)
+    $tLinks = ($imdbTrailers | ForEach-Object { "[url=$($_.url)]$($_.name)[/url]" }) -join ' | '
+    $trailerLine = "${e_trailer} [b]Trailer:[/b] ${tLinks}"
+    $descLines = $Description -split "`n"
+    # Find insertion point: last RT line, or IMDB rating line, or genre line
+    $insertIdx = -1
+    for ($i = 0; $i -lt $descLines.Count; $i++) {
+        if ($descLines[$i] -match '\[b\].*RT\s|RT\s.*\[/b\]') { $insertIdx = $i }
+    }
+    if ($insertIdx -lt 0) {
+        for ($i = 0; $i -lt $descLines.Count; $i++) {
+            if ($descLines[$i] -match '\[b\].{0,15}:\[/b\].*\d+/10') { $insertIdx = $i; break }
+        }
+    }
+    if ($insertIdx -lt 0) {
+        $bgGenre2 = [char]0x0416 + [char]0x0430 + [char]0x043D + [char]0x0440  # Жанр
+        for ($i = 0; $i -lt $descLines.Count; $i++) {
+            if ($descLines[$i] -match '\[b\].{0,15}(Genres|Genre|Runtime|Countries)' -or $descLines[$i].Contains($bgGenre2)) { $insertIdx = $i }
+            elseif ($insertIdx -ge 0) { break }
+        }
+    }
+    if ($insertIdx -ge 0) {
+        $newLines = @()
+        for ($k = 0; $k -lt $descLines.Count; $k++) {
+            $newLines += $descLines[$k]
+            if ($k -eq $insertIdx) {
+                $newLines += ''
+                $newLines += $trailerLine
+            }
+        }
+        $Description = $newLines -join "`n"
+    } else {
+        $Description = $trailerLine + "`n`n" + $Description
+    }
 }
 
 # Prepend banner and header
@@ -182,18 +312,31 @@ if (Test-Path -LiteralPath $ScreensFile) {
     $Description += "`n`n${imgs}"
 }
 
+# Add keyword hashtags when no AI description (AI descriptions already contain hashtags)
+if (-not (Test-Path -LiteralPath $GeminiFile) -and (Test-Path -LiteralPath $ImdbFile)) {
+    $kwLine = Get-Content -LiteralPath $ImdbFile -Encoding UTF8 | Where-Object { $_ -match '^Keywords:' } | Select-Object -First 1
+    if ($kwLine) {
+        $kwText = ($kwLine -replace '^Keywords:\s*', '').Trim()
+        $tags = ($kwText -split ',') | ForEach-Object { $_.Trim() -replace '\s+', '' } | Where-Object { $_ }
+        if ($tags) {
+            $hashtags = ($tags | ForEach-Object { "#$_" }) -join ' '
+            $Description += "`n`n$hashtags"
+        }
+    }
+}
+
 # Add signature (build emoji from code point to avoid script file encoding issues)
 $e_bolt = [char]::ConvertFromUtf32(0x26A1)  # lightning bolt
 $sigCfg = (Get-Content -LiteralPath $configfile | Where-Object { $_ -notmatch '^\s*//' }) -join "`n" | ConvertFrom-Json
 $sigUrl = "$($sigCfg.tracker_url)/torrents?name=SCRIPT+UPLOAD3R"
-$Description += "`n`n[center][url=${sigUrl}][color=#7760de][size=16]${e_bolt} Uploaded using SCRIPT UPLOAD3R ${e_bolt}[/size][/color][/url]`n[size=9][color=#5f5f5f]Bash script torrent creator/uploader for Windows proudly developed by AI[/color][/size][/center]"
+$Description += "`n`n[center][url=${sigUrl}][color=#7760de][size=16]${e_bolt} Uploaded using SCRIPT UPLOAD3R ${e_bolt}[/size][/color][/url]`n[size=9][color=#5f5f5f]Shell script torrent creator/uploader for Windows proudly developed by AI[/color][/size][/center]"
 
 # Make hashtags linkable to tracker search
 if (Test-Path -LiteralPath $configfile) {
     $cfgForTracker = (Get-Content -LiteralPath $configfile | Where-Object { $_ -notmatch '^\s*//' }) -join "`n" | ConvertFrom-Json
     $TrackerUrl = $cfgForTracker.tracker_url
     if ($TrackerUrl) {
-        $rx = [regex]'(?<![=\w])#(\w+)'
+        $rx = [regex]'(?<![=\w])#([\w][\w.\-]*[\w]|[\w]+)'
         $tagMatches = $rx.Matches($Description)
         for ($i = $tagMatches.Count - 1; $i -ge 0; $i--) {
             $m = $tagMatches[$i]
@@ -360,11 +503,13 @@ if (Test-Path -LiteralPath $MediainfoFile) {
     }
 }
 # Check for external Bulgarian subtitle files if not found in MediaInfo
+$bgSrtGt = $false
 if (-not $bgSubs) {
     $srtFiles = Get-ChildItem -LiteralPath $directory -Recurse -File -Filter '*.srt' -ErrorAction SilentlyContinue
     foreach ($srt in $srtFiles) {
         if ($srt.Name -match '(?i)\.bg\.|\.bul\.|bulgarian|\.bgforced\.' -or $srt.FullName -match '(?i)[/\\]bg[/\\]|[/\\]bul[/\\]') {
             $bgSubs = $true
+            if ($srt.Name -match '\.GT') { $bgSrtGt = $true }
             break
         }
     }
@@ -374,7 +519,11 @@ $bgFlag = [char]::ConvertFromUtf32(0x1F1E7) + [char]::ConvertFromUtf32(0x1F1EC)
 $bgTags = ''
 if ($bgSubs) {
     $abcd = [char]::ConvertFromUtf32(0x1F524)
-    $bgTags = "${bgFlag}${abcd}"
+    $robot = ''
+    if ($bgSrtGt) {
+        $robot = [char]::ConvertFromUtf32(0x1F916)
+    }
+    $bgTags = "${robot}${bgFlag}${abcd}"
     Write-Host "Bulgarian subtitles detected"
 }
 if ($bgAudio) {

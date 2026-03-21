@@ -1,6 +1,6 @@
-[b][size=25]SCRIPT UPLOAD3R[/size][/b]
+[b][size=25][url=https://github.com/Unit3D/script-upload3r]SCRIPT UPLOAD3R[/url][/size][/b]
 
-Набор от скриптове за подготовка и качване на медия в Unit3D тракери. Работи на Windows — използвай [b]Bash[/b] (Git Bash / MSYS2) или [b]PowerShell[/b] (pwsh).
+Набор от скриптове за подготовка и качване на медия в Unit3D тракери. Работи на Windows чрез [b]PowerShell[/b] / [b]Cmd[/b]. Включва интерактивно меню ([b]run.bat[/b]) или пълна CLI поддръжка.
 
 [b][size=15]Какво прави[/size][/b]
 
@@ -23,22 +23,15 @@
 
 [code]
 torrent-upload/
-├── bash/        # Bash скриптове (.sh)
 ├── ps/          # PowerShell скриптове (.ps1)
 ├── tools/       # MediaInfo.exe, ffmpeg.exe, ffprobe.exe (свалят се от install скрипта)
-├── shared/      # ai_call.ps1, ai_system_prompt.txt, mktorrent.ps1, конфиг файлове
+├── shared/      # ai_call.ps1, ai_system_prompt.txt, mktorrent.ps1
 ├── output/      # Генерирани файлове
-├── run.sh       # Bash оркестратор
-├── run.ps1      # PowerShell оркестратор
-├── upload.sh    # Качване в тракера (Bash)
-├── upload.ps1   # Качване в тракера (PowerShell)
-├── edit.sh      # Редактиране на торент (Bash)
-├── edit.ps1     # Редактиране на торент (PowerShell)
-├── delete.sh    # Изтриване на торент (Bash)
-├── delete.ps1   # Изтриване на торент (PowerShell)
-├── install.sh   # Инсталация — сваля инструменти и създава конфиг (Bash)
-├── install.ps1  # Инсталация (PowerShell)
-├── install.bat  # Инсталация (Cmd)
+├── run.bat      # Интерактивно меню / Cmd обвивка за ps/run.ps1
+├── upload.bat   # Интерактивно меню / Cmd обвивка за ps/upload.ps1
+├── edit.bat     # Cmd обвивка за ps/edit.ps1
+├── delete.bat   # Cmd обвивка за ps/delete.ps1
+├── install.bat  # Cmd обвивка за ps/install.ps1
 ├── config.example.jsonc  # Примерен конфиг (шаблон)
 └── config.jsonc # API ключове и настройки — не се следи в git (копира се от примерния)
 [/code]
@@ -46,9 +39,8 @@ torrent-upload/
 [b][size=15]Изисквания[/size][/b]
 
 [list]
-[*][b]Bash версия:[/b] [url=https://git-scm.com/downloads]Git Bash[/url] или MSYS2
-[*][b]PowerShell версия:[/b] PowerShell 5+ (pwsh)
-[*][b]curl[/b] — включен в Git Bash и Windows 10+
+[*][b]PowerShell[/b] 5+ (pwsh или Windows PowerShell)
+[*][b]curl[/b] — включен в Windows 10+
 [*][b]API ключове[/b] — конфигурирани в config.jsonc
 [/list]
 
@@ -57,12 +49,10 @@ torrent-upload/
 Стартирай инсталационния скрипт, за да свалиш инструментите и да създадеш конфиг файл:
 
 [code]
-# Bash
-./install.sh
-
-# PowerShell / Cmd
 install.bat
 [/code]
+
+Или използвай интерактивното меню — [b]run.bat[/b] ще засече липсващи компоненти и ще предложи да пуснеш инсталатора.
 
 Това ще:
 [list]
@@ -92,6 +82,7 @@ install.bat
   "ollama_model": "gemma3:4b",
   "ollama_url": "",
   "omdb_api_key": "YOUR_OMDB_API_KEY",
+  "mdblist_api_key": "YOUR_MDBLIST_API_KEY",
   "onlyimage_api_key": "YOUR_ONLYIMAGE_API_KEY"
 }
 [/code]
@@ -109,42 +100,53 @@ install.bat
 [*][b]ai_provider[/b] — принудителен AI доставчик: "gemini" или "ollama" (автоматично, ако е пропуснат)
 [*][b]ollama_model[/b] — Ollama модел (напр. gemma3:4b) — ако е зададен и няма ai_provider, се използва Ollama
 [*][b]ollama_url[/b] — Ollama API URL (по подразбиране: http://localhost:11434)
-[*][b]omdb_api_key[/b] — [url=https://www.omdbapi.com/apikey.aspx]OMDB API key[/url] (безплатен, за Rotten Tomatoes рейтинг)
+[*][b]mdblist_api_key[/b] — [url=https://mdblist.com/]MDBList API key[/url] (безплатен, за Rotten Tomatoes Critics и Audience оценки)
+[*][b]omdb_api_key[/b] — [url=https://www.omdbapi.com/apikey.aspx]OMDB API key[/url] (безплатен, резервен вариант за RT Critics оценка когато MDBList няма данни)
 [*][b]onlyimage_api_key[/b] — [url=https://onlyimage.org/user/settings/api]onlyimage.org API key[/url] (от настройките на акаунта)
 [/list]
 
 [b][size=15]Употреба[/size][/b]
 
-[b]Пълен pipeline:[/b]
+[b]Интерактивно меню:[/b]
+
+Просто стартирай [b]run.bat[/b] без аргументи за интерактивното меню — избор на папка/файл, тип съдържание, стъпки, редактиране/изтриване на торенти, качване в тракера.
+
+[b]Пълен pipeline (CLI):[/b]
 
 [code]
-# Bash (Git Bash / MSYS2)
-./run.sh "/d/media/Pacific.Rim.2013.1080p.BluRay"
-./run.sh --tv "/d/media/Breaking.Bad.S01.1080p"
-./run.sh -s 4,5,8 "/d/media/Pacific.Rim.2013.1080p.BluRay"
-./run.sh -q "Mamnik" -t "/d/media/Mamnik.S01.1080p"
+.\ps\run.ps1 [опции] <директория> [config.jsonc]
+run.bat [опции] <директория> [config.jsonc]
+[/code]
 
-# PowerShell
-.\run.ps1 "D:\media\Pacific.Rim.2013.1080p.BluRay"
-.\run.ps1 -tv "D:\media\Breaking.Bad.S01.1080p"
-.\run.ps1 -steps 4,5,8 "D:\media\Pacific.Rim.2013.1080p.BluRay"
-.\run.ps1 -query "Mamnik" -tv "D:\media\Mamnik.S01.1080p"
+[b]Примери:[/b]
+[code]
+# Всички стъпки (по подразбиране)
+.\ps\run.ps1 "D:\media\Pacific.Rim.2013.1080p.BluRay"
 
-# Cmd
+# ТВ сериал
+.\ps\run.ps1 -tv "D:\media\Breaking.Bad.S01.1080p"
+
+# Само определени стъпки
+.\ps\run.ps1 -steps 4,5,8 "D:\media\Pacific.Rim.2013.1080p.BluRay"
+
+# Ръчно задаване на търсене
+.\ps\run.ps1 -query "Mamnik" -tv "D:\media\Mamnik.S01.1080p"
+
+# От cmd
 run.bat "D:\media\Pacific.Rim.2013.1080p.BluRay"
-run.bat -steps tmdb,imdb,description "D:\media\Pacific.Rim.2013.1080p.BluRay"
+run.bat -steps 1,2,3 "D:\media\Pacific.Rim.2013.1080p.BluRay"
 [/code]
 
 [b]Опции:[/b]
 [list]
-[*][b]-t / --tv[/b] (Bash) / [b]-tv[/b] (PS) — търси ТВ серии вместо филми
-[*][b]--dht[/b] (Bash) / [b]-dht[/b] (PS) — включва DHT в торента (по подразбиране е private)
-[*][b]-s / --steps[/b] (Bash) / [b]-steps[/b] (PS) — списък от стъпки, разделени със запетая
-[*][b]-q / --query[/b] (Bash) / [b]-query[/b] (PS) — ръчно задаване на TMDB/IMDB търсене (полезно за нелатински заглавия)
-[*][b]-h / --help[/b] (Bash) / [b]-help[/b] (PS) — показва помощна информация
+[*][b]-tv[/b] — търси ТВ серии вместо филми
+[*][b]-dht[/b] — включва DHT в торента (по подразбиране е private)
+[*][b]-steps[/b] — списък от стъпки, разделени със запетая
+[*][b]-query[/b] — ръчно задаване на TMDB/IMDB търсене (полезно за нелатински заглавия)
+[*][b]-help[/b] — показва помощна информация
 [/list]
 
-[b]Налични стъпки[/b] (за -s / -steps):
+[b]Налични стъпки[/b] (за -steps):
 
 [list]
 [*][b]1 / parse[/b] — MediaInfo от видео файловете
@@ -160,17 +162,7 @@ run.bat -steps tmdb,imdb,description "D:\media\Pacific.Rim.2013.1080p.BluRay"
 [b]Качване в тракера (след pipeline):[/b]
 
 [code]
-# Bash — с интерактивни въпроси
-./upload.sh "/d/media/Pacific.Rim.2013.1080p.BluRay"
-
-# Bash — автоматичен режим (без въпроси)
-./upload.sh -a "/d/media/Pacific.Rim.2013.1080p.BluRay"
-
-# PowerShell
-.\upload.ps1 "D:\media\Pacific.Rim.2013.1080p.BluRay"
-.\upload.ps1 -auto "D:\media\Pacific.Rim.2013.1080p.BluRay"
-
-# Cmd
+.\ps\upload.ps1 [-auto] "D:\media\Pacific.Rim.2013.1080p.BluRay"
 upload.bat "D:\media\Pacific.Rim.2013.1080p.BluRay"
 [/code]
 
@@ -181,29 +173,17 @@ TV режимът се определя автоматично от _upload_requ
 Редактира метаданните на съществуващ торент (име, категория, тип, резолюция, TMDB/IMDB, сезон/епизод, описание, mediainfo, personal/anonymous). Изисква [b]username[/b] и [b]password[/b] в config.jsonc.
 
 [code]
-# Bash — интерактивно редактиране
-./edit.sh 2770
-
-# С данни от pipeline output файл
-./edit.sh 2770 -u output/Movie_upload_request.txt -d output/Movie_torrent_description.txt
-
-# С подмяна на описание и mediainfo от файлове
-./edit.sh 2770 -d new_desc.txt -m mediainfo.txt
-
-# С име от файл (запазва emoji от clipboard)
-./edit.sh 2770 -n name.txt
-
-# PowerShell
-.\edit.ps1 2770
-edit.bat 2770 -u output/Movie_upload_request.txt
+.\ps\edit.ps1 2770
+edit.bat 2770 -u output/Movie_upload_request.txt -d output/Movie_torrent_description.txt
+.\ps\edit.ps1 2770 -d new_desc.txt -m mediainfo.txt
 [/code]
 
 Опции:
 [list]
-[*][b]-u <файл>[/b] — зарежда всички полета от _upload_request.txt (име, категория, тип, резолюция, TMDB/IMDB, сезон/епизод, personal, anonymous)
+[*][b]-u <файл>[/b] — зарежда всички полета от _upload_request.txt
 [*][b]-n <файл>[/b] — използва име от файл вместо текущото (запазва emoji от clipboard)
 [*][b]-d <файл>[/b] — използва описание от файл вместо текущото
-[*][b]-m <файл>[/b] — използва mediainfo от файл вместо текущото (автоматично премахва Encoding settings редове)
+[*][b]-m <файл>[/b] — използва mediainfo от файл вместо текущото
 [/list]
 
 [b]Изтриване на торент:[/b]
@@ -211,20 +191,13 @@ edit.bat 2770 -u output/Movie_upload_request.txt
 Изтрива торент по ID с потвърждение. Изисква [b]username[/b] и [b]password[/b] в config.jsonc.
 
 [code]
-# Bash — с потвърждение
-./delete.sh 2770
-
-# Bash — без потвърждение (force)
-./delete.sh -f 2770
-
-# PowerShell
-.\delete.ps1 2770
+.\ps\delete.ps1 2770
 delete.bat -f 2770
 [/code]
 
 Опции:
 [list]
-[*][b]-f / --force[/b] — пропуска API заявката и изтрива без потвърждение
+[*][b]-f[/b] — пропуска API заявката и изтрива без потвърждение
 [/list]
 
 [b][size=15]Изходни файлове (output/)[/size][/b]
@@ -272,10 +245,16 @@ delete.bat -f 2770
 
 [list]
 [*][b]TV режим[/b]: автоматично от pipeline — задава category_id, season_number и episode_number с интерактивно потвърждение
-[*][b]Автоматичен режим[/b] (-a / -auto): пропуска всички интерактивни въпроси и използва стойностите по подразбиране
+[*][b]Автоматичен режим[/b] (-auto): пропуска всички интерактивни въпроси и използва стойностите по подразбиране
 [*][b]БГ заглавие[/b]: добавя българско заглавие и година към името (напр. Movie.2013.1080p / Филм (2013))
-[*][b]БГ аудио/субтитри[/b]: автоматично добавя 🇧🇬🔤 за БГ субтитри (вградени или външни .srt) и 🇧🇬🔊 за БГ аудио
-[*][b]Rotten Tomatoes рейтинг[/b]: показва RT оценката в описанието (чрез OMDB API)
+[*][b]БГ аудио/субтитри[/b]: автоматично добавя 🇧🇬🔤 за БГ субтитри (вградени или външни .srt) и 🇧🇬🔊 за БГ аудио; добавя 🤖 пред 🇧🇬🔤 когато .srt файлът съдържа .GT (Google Translate)
+[*][b]Rotten Tomatoes рейтинги[/b]: показва RT Critics (🍅) и Audience (🍿) оценки в описанието (чрез MDBList API, с OMDB като резервен вариант)
 [*][b]Интерактивен избор[/b]: категория, тип и резолюция с навигация и предварително избрана стойност
 [*][b]Лог файл[/b]: записва пълната заявка и отговор в _upload.log
 [/list]
+
+[b][size=15]Скрийншоти[/size][/b]
+
+[center]
+[url=https://img.onlyimage.org/image/Q4WN1g.png][img=400]https://img.onlyimage.org/Q4WN1g.png[/img][/url][url=https://img.onlyimage.org/image/Q4WYMj.png][img=400]https://img.onlyimage.org/Q4WYMj.png[/img][/url][url=https://img.onlyimage.org/image/Q4Wa6G.png][img=400]https://img.onlyimage.org/Q4Wa6G.png[/img][/url][url=https://img.onlyimage.org/image/Q4WSxH.png][img=400]https://img.onlyimage.org/Q4WSxH.png[/img][/url][url=https://img.onlyimage.org/image/Q4WXxJ.png][img=400]https://img.onlyimage.org/Q4WXxJ.png[/img][/url][url=https://img.onlyimage.org/image/Q4WZs6.png][img=400]https://img.onlyimage.org/Q4WZs6.png[/img][/url]
+[/center]

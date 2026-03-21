@@ -1,6 +1,6 @@
 # SCRIPT UPLOAD3R
 
-A set of scripts for preparing and uploading media to Unit3D-based torrent trackers. Runs on Windows — use **Bash** (Git Bash / MSYS2) or **PowerShell** (pwsh / Windows Terminal).
+A set of scripts for preparing and uploading media to Unit3D-based torrent trackers. Runs on Windows via **PowerShell** / **Cmd**. Features an interactive menu (`run.bat`) or full CLI support.
 
 ## What It Does
 
@@ -21,48 +21,34 @@ All output files are saved to the `output/` directory.
 
 ```
 torrent-upload/
-├── bash/        # Bash pipeline scripts (.sh)
 ├── ps/          # PowerShell pipeline scripts (.ps1)
 ├── tools/       # Binaries: MediaInfo.exe, ffmpeg.exe, ffprobe.exe (auto-downloaded by install script)
-├── shared/      # Shared resources: ai_call.ps1, ai_system_prompt.txt, mktorrent.ps1, config files
+├── shared/      # Shared resources: ai_call.ps1, ai_system_prompt.txt, mktorrent.ps1
 ├── output/      # Generated output files
-├── run.sh       # Bash orchestrator
-├── run.ps1      # PowerShell orchestrator
-├── run.bat      # Cmd wrapper for run.ps1
-├── upload.sh    # Bash tracker upload
-├── upload.ps1   # PowerShell tracker upload
-├── upload.bat   # Cmd wrapper for upload.ps1
-├── edit.sh      # Bash torrent editor
-├── edit.ps1     # PowerShell torrent editor
-├── edit.bat     # Cmd wrapper for edit.ps1
-├── delete.sh    # Bash torrent deleter
-├── delete.ps1   # PowerShell torrent deleter
-├── delete.bat   # Cmd wrapper for delete.ps1
-├── install.sh   # Bash install script (downloads tools, creates config)
-├── install.ps1  # PowerShell install script
-├── install.bat  # Cmd wrapper for install.ps1
+├── run.bat      # Interactive menu / cmd wrapper for ps/run.ps1
+├── upload.bat   # Interactive menu / cmd wrapper for ps/upload.ps1
+├── edit.bat     # Cmd wrapper for ps/edit.ps1
+├── delete.bat   # Cmd wrapper for ps/delete.ps1
+├── install.bat  # Cmd wrapper for ps/install.ps1
 ├── config.example.jsonc  # Example config template (tracked in git)
 └── config.jsonc # API keys and settings — gitignored (copy from example)
 ```
 
 ## Requirements
 
-- **Bash version:** [Git Bash](https://git-scm.com/downloads) or MSYS2; PowerShell is used internally for JSON/torrent tasks
-- **PowerShell version:** PowerShell 5+ (`pwsh`)
-- **`curl`** — built into Git Bash and Windows 10+
+- **PowerShell** 5+ (`pwsh` or Windows PowerShell)
+- **`curl`** — built into Windows 10+
 - **API keys** — configured in `config.jsonc`
 
 ## Setup
 
 Run the install script to download required tools and create your config:
 
-```bash
-# Bash
-./install.sh
-
-# PowerShell / Cmd
+```
 install.bat
 ```
+
+Or use the interactive menu — `run.bat` will detect missing components and offer to run the installer.
 
 This will:
 - Download `ffmpeg.exe`, `ffprobe.exe`, and `MediaInfo.exe` to `tools/` (if not already present)
@@ -90,6 +76,7 @@ Then edit `config.jsonc` with your credentials. JSONC supports `//` line comment
   "ollama_model": "gemma3:4b",
   "ollama_url": "",
   "omdb_api_key": "YOUR_OMDB_API_KEY",
+  "mdblist_api_key": "YOUR_MDBLIST_API_KEY",
   "onlyimage_api_key": "YOUR_ONLYIMAGE_API_KEY"
 }
 ```
@@ -113,36 +100,40 @@ Then edit `config.jsonc` with your credentials. JSONC supports `//` line comment
 | `ai_provider` | Force AI provider: `"gemini"` or `"ollama"` (auto-detected if omitted) |
 | `ollama_model` | Ollama model name (e.g. `gemma3:4b`) — if set and no `ai_provider`, Ollama is used |
 | `ollama_url` | Ollama API URL (default: `http://localhost:11434`) |
-| `omdb_api_key` | [OMDB API key](https://www.omdbapi.com/apikey.aspx) — free tier, used for Rotten Tomatoes ratings |
+| `mdblist_api_key` | [MDBList API key](https://mdblist.com/) — free tier, used for Rotten Tomatoes Critics and Audience scores |
+| `omdb_api_key` | [OMDB API key](https://www.omdbapi.com/apikey.aspx) — free tier, used as fallback for RT Critics score when MDBList has no data |
 | `onlyimage_api_key` | [onlyimage.org API key](https://onlyimage.org/user/settings/api) — register and find it in account settings |
 
 ## Usage
 
-### Full pipeline
+### Interactive menu
 
-**Bash (Git Bash / MSYS2):**
-```bash
-./run.sh [options] <directory> [config.jsonc]
-```
+Just run `run.bat` without arguments for the interactive menu:
+- Browse for folder/file or enter path manually
+- Choose content type (Movie / TV Series)
+- Select pipeline steps
+- Edit/delete torrents by ID
+- Upload to tracker after processing
 
-**PowerShell:**
+### Full pipeline (CLI)
+
 ```powershell
-.\run.ps1 [options] <directory> [config.jsonc]
-# or run from cmd:
+.\ps\run.ps1 [options] <directory> [config.jsonc]
+# or from cmd:
 run.bat [options] <directory> [config.jsonc]
 ```
 
 **Options:**
 
-| Flag | Bash | PowerShell | Description |
-|------|------|------------|-------------|
-| TV mode | `-t` / `--tv` | `-tv` | Search for TV shows instead of movies |
-| DHT | `--dht` | `-dht` | Enable DHT in the torrent (private by default) |
-| Steps | `-s` / `--steps` | `-steps` | Comma-separated list of steps to run |
-| Query | `-q` / `--query` | `-query` | Override TMDB/IMDB search query (useful for non-Latin titles) |
-| Help | `-h` / `--help` | `-help` | Show help with all options and examples |
+| Flag | Description |
+|------|-------------|
+| `-tv` | Search for TV shows instead of movies |
+| `-dht` | Enable DHT in the torrent (private by default) |
+| `-steps` | Comma-separated list of steps to run |
+| `-query` | Override TMDB/IMDB search query (useful for non-Latin titles) |
+| `-help` | Show help with all options and examples |
 
-**Available steps** (use with `-s` / `-Steps`):
+**Available steps** (use with `-steps`):
 
 | # | Name | Description |
 |---|------|-------------|
@@ -157,41 +148,21 @@ run.bat [options] <directory> [config.jsonc]
 
 **Examples:**
 
-```bash
-# Bash — run all steps (default)
-./run.sh "/d/media/Pacific.Rim.2013.1080p.BluRay"
-
-# Bash — TV show
-./run.sh --tv "/d/media/Breaking.Bad.S01.1080p"
-
-# Bash — run only specific steps
-./run.sh -s 4,5,8 "/d/media/Pacific.Rim.2013.1080p.BluRay"
-
-# Bash — run steps by name
-./run.sh -s parse,screens,description "/d/media/Pacific.Rim.2013.1080p.BluRay"
-
-# Bash — override search query (non-Latin titles)
-./run.sh -q "Mamnik" -t "/d/media/Mamnik.S01.1080p"
-
-# Bash — custom config
-./run.sh "/d/media/some.movie" /path/to/other-config.jsonc
-```
-
 ```powershell
-# PowerShell — run all steps (default)
-.\run.ps1 "D:\media\Pacific.Rim.2013.1080p.BluRay"
+# Run all steps (default)
+.\ps\run.ps1 "D:\media\Pacific.Rim.2013.1080p.BluRay"
 
-# PowerShell — TV show
-.\run.ps1 -tv "D:\media\Breaking.Bad.S01.1080p"
+# TV show
+.\ps\run.ps1 -tv "D:\media\Breaking.Bad.S01.1080p"
 
-# PowerShell — run only specific steps
-.\run.ps1 -steps 4,5,8 "D:\media\Pacific.Rim.2013.1080p.BluRay"
+# Run only specific steps
+.\ps\run.ps1 -steps 4,5,8 "D:\media\Pacific.Rim.2013.1080p.BluRay"
 
-# PowerShell — run steps by name
-.\run.ps1 -steps tmdb,imdb,description "D:\media\Pacific.Rim.2013.1080p.BluRay"
+# Run steps by name
+.\ps\run.ps1 -steps tmdb,imdb,description "D:\media\Pacific.Rim.2013.1080p.BluRay"
 
-# PowerShell — override search query
-.\run.ps1 -query "Mamnik" -tv "D:\media\Mamnik.S01.1080p"
+# Override search query
+.\ps\run.ps1 -query "Mamnik" -tv "D:\media\Mamnik.S01.1080p"
 
 # From cmd
 run.bat "D:\media\Pacific.Rim.2013.1080p.BluRay"
@@ -202,44 +173,27 @@ run.bat -steps 1,2,3 "D:\media\Pacific.Rim.2013.1080p.BluRay"
 
 ### Upload to tracker (after pipeline)
 
-**Bash (Git Bash / MSYS2):**
-```bash
-./upload.sh [-a] <directory> [config.jsonc]
-```
-
-**PowerShell:**
 ```powershell
-.\upload.ps1 [-auto] <directory> [config.jsonc]
-```
-
-**Batch (cmd):**
-```batch
+.\ps\upload.ps1 [-auto] <directory> [config.jsonc]
+# or from cmd:
 upload.bat [-auto] <directory> [config.jsonc]
 ```
 
-| Flag | Bash | PowerShell | Description |
-|------|------|------------|-------------|
-| Auto mode | `-a` / `--auto` | `-auto` | Skip all interactive prompts, use defaults |
+| Flag | Description |
+|------|-------------|
+| `-auto` | Skip all interactive prompts, use defaults |
 
 TV mode is auto-detected from the `_upload_request.txt` generated by the pipeline (step 8).
 
 **Examples:**
-```bash
-# Bash — upload with interactive prompts
-./upload.sh "/d/media/Pacific.Rim.2013.1080p.BluRay"
-
-# Bash — auto mode (skip prompts, use defaults)
-./upload.sh -a "/d/media/Pacific.Rim.2013.1080p.BluRay"
-```
 ```powershell
-# PowerShell
-.\upload.ps1 "D:\media\Pacific.Rim.2013.1080p.BluRay"
+# Upload with interactive prompts
+.\ps\upload.ps1 "D:\media\Pacific.Rim.2013.1080p.BluRay"
 
-# PowerShell — auto mode
-.\upload.ps1 -auto "D:\media\Pacific.Rim.2013.1080p.BluRay"
-```
-```batch
-rem Cmd
+# Auto mode (skip prompts, use defaults)
+.\ps\upload.ps1 -auto "D:\media\Pacific.Rim.2013.1080p.BluRay"
+
+# From cmd
 upload.bat "D:\media\Pacific.Rim.2013.1080p.BluRay"
 ```
 
@@ -251,14 +205,8 @@ Edit an existing torrent's metadata (name, category, type, resolution, TMDB/IMDB
 
 Requires `username` and `password` in `config.jsonc`.
 
-**Bash:**
-```bash
-./edit.sh <torrent_id> [config.jsonc] [-u upload_request.txt] [-n name.txt] [-d description.txt] [-m mediainfo.txt]
-```
-
-**PowerShell / Batch:**
 ```powershell
-.\edit.ps1 <torrent_id> [config.jsonc] [-u upload_request.txt] [-n name.txt] [-d description.txt] [-m mediainfo.txt]
+.\ps\edit.ps1 <torrent_id> [config.jsonc] [-u upload_request.txt] [-n name.txt] [-d description.txt] [-m mediainfo.txt]
 edit.bat <torrent_id> [config.jsonc] [-u upload_request.txt] [-n name.txt] [-d description.txt] [-m mediainfo.txt]
 ```
 
@@ -270,15 +218,15 @@ edit.bat <torrent_id> [config.jsonc] [-u upload_request.txt] [-n name.txt] [-d d
 | `-m <file>` | Use mediainfo from file instead of current one |
 
 **Examples:**
-```bash
+```powershell
 # Edit torrent #2770 interactively
-./edit.sh 2770
+.\ps\edit.ps1 2770
 
 # Load all fields from pipeline output
-./edit.sh 2770 -u output/Movie_upload_request.txt -d output/Movie_torrent_description.txt
+.\ps\edit.ps1 2770 -u output/Movie_upload_request.txt -d output/Movie_torrent_description.txt
 
 # Edit with replacement description and mediainfo
-./edit.sh 2770 -d new_desc.txt -m mediainfo.txt
+.\ps\edit.ps1 2770 -d new_desc.txt -m mediainfo.txt
 ```
 
 ---
@@ -289,46 +237,40 @@ Delete a torrent by ID. Fetches torrent info for confirmation, then deletes via 
 
 Requires `username` and `password` in `config.jsonc`.
 
-**Bash:**
-```bash
-./delete.sh [-f] <torrent_id> [config.jsonc]
-```
-
-**PowerShell / Batch:**
 ```powershell
-.\delete.ps1 [-f] <torrent_id> [config.jsonc]
+.\ps\delete.ps1 [-f] <torrent_id> [config.jsonc]
 delete.bat [-f] <torrent_id> [config.jsonc]
 ```
 
 | Flag | Description |
 |------|-------------|
-| `-f` / `--force` | Skip API fetch and delete without confirmation |
+| `-f` | Skip API fetch and delete without confirmation |
 
 **Examples:**
-```bash
+```powershell
 # Delete with confirmation
-./delete.sh 2770
+.\ps\delete.ps1 2770
 
 # Force delete (skip confirmation)
-./delete.sh -f 2770
+.\ps\delete.ps1 -f 2770
 ```
 
 ---
 
 ### Individual scripts
 
-Each script can be run standalone. Bash scripts live in `bash/`, PowerShell scripts in `ps/`.
+Each pipeline step can be run standalone. Scripts are in `ps/`.
 
-| Step | Bash | PowerShell |
-|------|------|------------|
-| MediaInfo | `bash bash/parse.sh <dir>` | `.\ps\parse.ps1 <dir>` |
-| Create torrent | `bash bash/create.sh [--dht] <dir> [config]` | `.\ps\create.ps1 [-dht] <dir> [config]` |
-| Screenshots | `bash bash/screens.sh <dir>` | `.\ps\screens.ps1 <dir>` |
-| TMDB search | `bash bash/tmdb.sh [-t] [-q query] <dir> [config]` | `.\ps\tmdb.ps1 [-tv] [-query query] <dir> [config]` |
-| IMDB lookup | `bash bash/imdb.sh [-t] [-q query] <dir> [config]` | `.\ps\imdb.ps1 [-tv] [-query query] <dir> [config]` |
-| AI description | `bash bash/describe.sh [-t] [-q query] <dir> [config]` | `.\ps\describe.ps1 [-tv] [-query query] <dir> [config]` |
-| Upload screenshots | `bash bash/upload.sh <dir> [config]` | `.\ps\upload.ps1 <dir> [config]` |
-| Build description | `bash bash/description.sh <dir>` | `.\ps\description.ps1 <dir>` |
+| Step | Command |
+|------|---------|
+| MediaInfo | `.\ps\parse.ps1 <dir>` |
+| Create torrent | `.\ps\create.ps1 [-dht] <dir> [config]` |
+| Screenshots | `.\ps\screens.ps1 <dir>` |
+| TMDB search | `.\ps\tmdb.ps1 [-tv] [-query query] <dir> [config]` |
+| IMDB lookup | `.\ps\imdb.ps1 [-tv] [-query query] <dir> [config]` |
+| AI description | `.\ps\describe.ps1 [-tv] [-query query] <dir> [config]` |
+| Upload screenshots | `.\ps\screens_upload.ps1 <dir> [config]` |
+| Build description | `.\ps\description.ps1 <dir>` |
 
 ---
 
@@ -386,9 +328,18 @@ Width-based detection handles non-standard heights (e.g. 1920x960 correctly maps
 ## Upload Features
 
 - **TV mode**: auto-detected from pipeline output — sets `category_id`, `season_number` and `episode_number` with interactive confirmation
-- **Auto mode** (`-a` / `-auto`): skips all interactive prompts (category, type, resolution, season/episode) and uses defaults
+- **Auto mode** (`-auto`): skips all interactive prompts (category, type, resolution, season/episode) and uses defaults
 - **BG title**: appends Bulgarian title and year to upload name (e.g. `Movie.2013.1080p / Филм (2013)`)
-- **BG audio/subtitle detection**: automatically appends `🇧🇬🔤` for Bulgarian subtitles (embedded or external `.srt`) and `🇧🇬🔊` for Bulgarian audio to the upload title
-- **Rotten Tomatoes rating**: displays RT score in torrent description when available via OMDB API
+- **BG audio/subtitle detection**: automatically appends `🇧🇬🔤` for Bulgarian subtitles (embedded or external `.srt`) and `🇧🇬🔊` for Bulgarian audio to the upload title; prepends `🤖` when external subtitle filename contains `.GT` (Google Translate)
+- **Rotten Tomatoes ratings**: displays RT Critics (🍅) and Audience (🍿) scores in torrent description via MDBList API, with OMDB fallback
 - **Interactive pickers**: category, type, and resolution selection with arrow-key navigation and default preselection
 - **Upload log**: saves full request fields and response to `_upload.log`
+
+## Screenshots
+
+![1](https://img.onlyimage.org/Q4WN1g.png)
+![2](https://img.onlyimage.org/Q4WYMj.png)
+![3](https://img.onlyimage.org/Q4Wa6G.png)
+![4](https://img.onlyimage.org/Q4WSxH.png)
+![5](https://img.onlyimage.org/Q4WXxJ.png)
+![6](https://img.onlyimage.org/Q4WZs6.png)

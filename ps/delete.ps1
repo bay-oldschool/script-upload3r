@@ -22,7 +22,7 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
-$PSScriptRoot = Split-Path -Parent -Path $MyInvocation.MyCommand.Definition
+$PSScriptRoot = Split-Path -Parent -Path (Split-Path -Parent -Path $MyInvocation.MyCommand.Definition)
 
 if (-not $torrent_id) {
     Write-Host @"
@@ -106,8 +106,9 @@ if ($force) {
     Write-Host "  type:          $curType"
     Write-Host "  resolution:    $curResolution"
     Write-Host ""
-    $confirm = Read-Host "Are you sure you want to DELETE this torrent? (yes/no)"
-    if ($confirm -ne 'yes') {
+    $confirm = Read-Host "Are you sure you want to DELETE this torrent? (y/n) [y]"
+    if (-not $confirm) { $confirm = 'y' }
+    if ($confirm -ne 'y' -and $confirm -ne 'yes') {
         Write-Host "Aborted."
         exit 0
     }

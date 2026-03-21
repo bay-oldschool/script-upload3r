@@ -17,7 +17,7 @@ param(
 
 $ErrorActionPreference = 'Stop'
 $PSScriptRoot = Split-Path -Parent -Path $MyInvocation.MyCommand.Definition
-$directory = $directory.TrimEnd('"').TrimEnd('\')
+$directory = $directory.TrimEnd('"').Trim().TrimEnd('\')
 
 if (Test-Path -LiteralPath $directory -PathType Leaf) {
     $singleFile = $directory

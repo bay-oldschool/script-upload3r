@@ -33,7 +33,7 @@ param(
 
 $ErrorActionPreference = 'Stop'
 $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
-$PSScriptRoot = Split-Path -Parent -Path $MyInvocation.MyCommand.Definition
+$PSScriptRoot = Split-Path -Parent -Path (Split-Path -Parent -Path $MyInvocation.MyCommand.Definition)
 
 function Extract-LivewireDesc($html) {
     # Extract BBCode description from Livewire wire:initial-data (HTML-encoded JSON)

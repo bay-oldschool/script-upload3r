@@ -3,7 +3,7 @@
   "tracker_url": "https://example.com",
   "announce_url": "https://example.com/announce/YOUR_ANNOUNCE_KEY",
   "api_key": "YOUR_API_KEY",
-  // Tracker login credentials (required for edit.sh/ps1 and delete.sh/ps1)
+  // Tracker login credentials (required for edit.ps1 and delete.ps1)
   "username": "",
   "password": "",
 
@@ -28,8 +28,11 @@
   "ollama_model": "gemma3:4b",
   "ollama_url": "",
 
-  // OMDB API (for Rotten Tomatoes rating, free key from omdbapi.com)
+  // OMDB API (fallback for RT ratings when MDBList has none)
   "omdb_api_key": "YOUR_OMDB_API_KEY",
+
+  // MDBList API (for Rotten Tomatoes ratings, free key from mdblist.com)
+  "mdblist_api_key": "YOUR_MDBLIST_API_KEY",
 
   // Screenshot hosting
   "onlyimage_api_key": "YOUR_ONLYIMAGE_API_KEY"

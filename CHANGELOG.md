@@ -1,11 +1,58 @@
 # Changelog
 
+## v4.0.0 — 2026-03-21
+
+### Breaking Changes
+- **Removed Bash support**: all `.sh` scripts and `bash/` directory removed; project is now PowerShell/Cmd only
+- **Moved root PS1 scripts to `ps/`**: `run.ps1`, `upload.ps1`, `edit.ps1`, `delete.ps1`, `install.ps1` now live in `ps/` alongside pipeline scripts; `.bat` wrappers updated accordingly
+
+### New Features
+- **Interactive menu** (`run.bat`): full interactive menu when run without arguments — browse folder/file, enter path manually, use last/saved paths, edit/delete torrents by ID, step selection, DHT toggle, upload after processing
+- **Interactive upload menu** (`upload.bat`): path selection with last/saved paths, auto mode prompt
+- **Welcome screen**: auto-detects missing components (config, tools) and offers to run installer
+- **File browser**: graphical file picker for single video files (`.mkv`, `.mp4`, `.avi`)
+- **Saved paths**: both menus save/recall paths via `output/.last_path.txt` and `output/.saved_paths.txt` (shared between run and upload)
+- **Screenshot upload script renamed**: `ps/upload.ps1` (screenshot uploader) renamed to `ps/screens_upload.ps1` to avoid collision with tracker upload script
+- **ANSI colored menus**: blue headers, green success, red errors, cyan highlights in `.bat` menus
+- **Emoji menu items**: contextual emojis for all menu options
+
+### Improvements
+- **CLI passthrough**: `run.bat` and `upload.bat` pass arguments directly to PS1 scripts when called with args (no menu shown)
+- **Path trimming**: all PS1 scripts now `.Trim()` the directory path to prevent trailing-space issues causing broken output filenames
+- **Better upload errors**: `upload.ps1` now shows the `data` field from API validation errors
+- **DHT conditional**: DHT option only shown when torrent create step (step 2) is selected
+- **File/Folder label**: confirmation screen shows "File:" or "Folder:" based on selection type
+- **AI prompt emojis**: updated to unique, contextually relevant emojis for each description section
+
+### Bug Fixes
+- **Trailing space in path**: fixed paths with trailing whitespace producing broken output filenames (e.g. `Movie .torrent`)
+- **BOM in .bat files**: removed UTF-8 BOM that broke `@echo off` on first line
+- **CRLF line endings**: ensured all `.bat` files use CRLF (required by cmd.exe)
+- **ANSI in if/else blocks**: replaced parenthesized `if/else` blocks containing ANSI escape codes with `goto`-based branching (cmd.exe parser limitation)
+- **File path execution**: fixed multi-line `set /p` in `upload.bat` that caused video file paths to be executed as commands (opening media player)
+
+## v3.5.0 — 2026-03-20
+
+### Changes
+- **OMDB fallback for RT ratings**: when MDBList has no Rotten Tomatoes data for a title, falls back to OMDB API for RT Critics score
+- Added `omdb_api_key` to `config.example.jsonc`
+
+## v3.4.0 — 2026-03-19
+
+### Changes
+- **Rotten Tomatoes via MDBList**: replaced OMDB API with [MDBList API](https://mdblist.com/) for Rotten Tomatoes ratings — now shows both Critics Score (🍅) and Audience Score (🍿) in torrent descriptions
+- Config key renamed: `omdb_api_key` → `mdblist_api_key` (free key from mdblist.com)
+- **Google Translate subtitle indicator**: when external BG subtitle filename contains `.GT`, prepends 🤖 before 🇧🇬🔤 in upload title (e.g. `🤖🇧🇬🔤`)
+
+### Bug Fixes
+- Fixed file listing at end of `run.ps1` failing when name contains `[]` characters (escaped with `[WildcardPattern]::Escape()`)
+
 ## v3.3.0 — 2026-03-12
 
 ### New Features
-- **Install script** (`install.sh` / `install.ps1` / `install.bat`): automatically downloads ffmpeg, ffprobe, and MediaInfo if not present in `tools/`; copies `config.example.jsonc` to `config.jsonc` if missing
+- **Install script** (`install.ps1` / `install.bat`): automatically downloads ffmpeg, ffprobe, and MediaInfo if not present in `tools/`; copies `config.example.jsonc` to `config.jsonc` if missing
 - **Example config** (`config.example.jsonc`): template config with placeholder values — real `config.jsonc` is now gitignored to protect secrets
-- **Edit torrent script** (`edit.sh` / `edit.ps1` / `edit.bat`): interactively edit torrent metadata (name, category, type, resolution, TMDB/IMDB IDs, season/episode, description, mediainfo, personal release, anonymous) via web session with CSRF handling
+- **Edit torrent script** (`edit.ps1` / `edit.bat`): interactively edit torrent metadata (name, category, type, resolution, TMDB/IMDB IDs, season/episode, description, mediainfo, personal release, anonymous) via web session with CSRF handling
   - API fetch with automatic web page fallback when API returns 404
   - `-u <file>` flag to load all fields from `_upload_request.txt` (skips all interactive prompts)
   - `-n <file>` flag to set torrent name from file (preserves emoji that break on terminal paste)
@@ -14,7 +61,7 @@
   - Season/episode prompts for TV categories, extracted from API or edit page
   - Extracts current values from API response or HTML edit page (Livewire data for description, same-tag regex for TMDB/IMDB)
   - Personal release and anonymous prompts with current values as defaults
-- **Delete torrent script** (`delete.sh` / `delete.ps1` / `delete.bat`): delete a torrent by ID via web session with confirmation prompt
+- **Delete torrent script** (`delete.ps1` / `delete.bat`): delete a torrent by ID via web session with confirmation prompt
   - Fetches torrent info via API for confirmation before deleting
   - `-f` / `--force` flag to skip API fetch and delete without confirmation
   - Detailed error reporting (HTTP status, redirect location, HTML error extraction)
@@ -25,17 +72,16 @@
 - **`-q` / `--query` flag**: manually override the TMDB/IMDB search query instead of extracting from filename/directory name (useful for non-Latin titles like Cyrillic)
 - **Multi-level search fallback chain**: when the initial TMDB search fails, automatically retries without year filter → tries opposite media type (movie↔tv) → tries parent directory name (for single file paths)
 - **Year-aware title similarity scoring**: picks the best TMDB result using `score = titleScore × 2 + yearBonus`, correctly preferring e.g. Lion King 2019 over 1994 when year is in the directory name
-- **UTF-8 encoding fixes**: added `-Encoding UTF8` to all `Get-Content -Raw` calls and `[Console]::OutputEncoding` in bash-embedded PowerShell blocks, fixing Cyrillic mojibake in IMDB/TMDB output files
+- **UTF-8 encoding fixes**: added `-Encoding UTF8` to all `Get-Content -Raw` calls and `[Console]::OutputEncoding`, fixing Cyrillic mojibake in IMDB/TMDB output files
 - **Type auto-detection**: automatically detects torrent type (Remux, WEB-DL, WEBRip, HDTV, Full Disc) from filename/directory name — falls back to config default (Encode) if no pattern matches
-- **Colored console output**: all messages are now color-coded across both bash and PowerShell pipelines
+- **Colored console output**: all messages are now color-coded in the PowerShell pipeline
   - Red for errors, yellow for warnings/skipping/failures, green for success messages, blue for pipeline step headers
-  - Works on fresh Windows installs (PS uses `Write-Host -ForegroundColor`, bash uses ANSI escape codes)
 - **Friendly error messages**: replaced all PowerShell `Write-Error` stack traces with clean `Write-Host` messages
 - **Smart upload response**: shows friendly error when tracker returns HTML page instead of API response, with config hint
 - **Upload URL**: shows actual tracker URL in upload progress instead of hardcoded name
 - **Encoding settings filtering**: mediainfo submitted via edit script automatically strips `Encoding settings` lines (matching upload script behavior)
 - **Web session login**: reusable login function with anti-bot field handling (CSRF token, captcha, honeypot, random timestamp field)
-- **UTF-8 console encoding** in edit scripts for emoji support (PS `[Console]::InputEncoding/OutputEncoding`, bash `LC_ALL`)
+- **UTF-8 console encoding** in edit scripts for emoji support (`[Console]::InputEncoding/OutputEncoding`)
 - **HTML entity decoding** for torrent name in web fallback path
 
 ### Bug Fixes
@@ -57,7 +103,7 @@
 ### New Features
 - **Personal/anonymous upload prompts**: interactive prompts for `personal` (0/1) and `anonymous` (0/1) fields during upload, with defaults read from `config.jsonc`
 - **`personal` config option**: added `personal` field to `config.jsonc` (default: 0), sent as `personal_release` in tracker API
-- **Filtered output listing**: `run.sh` / `run.ps1` now list only files related to the current input path instead of the entire output directory
+- **Filtered output listing**: `run.ps1` now lists only files related to the current input path instead of the entire output directory
 
 ### Bug Fixes
 - Fixed torrent missing first letter of filename when path had trailing backslash (`mktorrent.ps1` `Resolve-Path` trimming)
@@ -66,7 +112,7 @@
 ## v3.0.0 — 2026-03-05
 
 ### New Features
-- **Rotten Tomatoes rating** via OMDB API: fetched in IMDB step and displayed in torrent description (requires free `omdb_api_key` from omdbapi.com)
+- **Rotten Tomatoes rating**: fetched in IMDB step and displayed in torrent description (originally via OMDB, later replaced with MDBList in v3.4.0)
 - **Interactive upload prompts**: category, type, resolution pickers with default preselection; season/episode confirmation for TV uploads
 - **`-auto` / `-a` flag** for upload scripts: skips all interactive prompts and uses defaults from config/output files
 - **External subtitle detection**: detects Bulgarian `.srt` files in torrent directory (by filename pattern: `.bg.`, `.bul.`, `bulgarian`) and adds `🇧🇬🔤` to upload name even when no embedded subs in MediaInfo
@@ -75,7 +121,7 @@
 
 ### Reorganization
 - **Moved config files to `shared/`**: `categories.jsonc`, `types.jsonc`, `resolutions.jsonc` now live in `shared/` alongside other shared resources
-- **Lowercase parameters**: all PowerShell script parameters renamed to lowercase (`-directory`, `-configfile`, `-tv`, `-dht`, `-steps`, etc.) for consistency with bash conventions
+- **Lowercase parameters**: all PowerShell script parameters renamed to lowercase (`-directory`, `-configfile`, `-tv`, `-dht`, `-steps`, etc.)
 
 ### Improvements
 - **BOM-free UTF-8 output**: all PowerShell scripts now write output files without UTF-8 BOM (`UTF8Encoding($false)`), fixing corrupted URLs and characters in output files
@@ -83,7 +129,7 @@
 - **IMDB rating rounding**: ratings now rounded to 1 decimal place (e.g. `6.8/10` instead of `6.767/10`)
 - **Banner URL fix**: picks banner from best-matched TMDB result instead of first result
 - **AI prompt enrichment**: sends cast, directors, genres, rating, and BG title to AI for better descriptions
-- **`-steps` flag alias**: bash `run.sh` now accepts `-steps` (single dash) in addition to `-s` / `--steps`
+- **`-steps` flag**: accepts step numbers or names (e.g. `-steps 4,5,8` or `-steps tmdb,imdb,description`)
 
 ### Bug Fixes
 - Fixed BOM (`﻿`) appearing in screenshot URLs in torrent description
@@ -107,8 +153,7 @@
 - **BBCode README** (`README.bbcode`) — Bulgarian localized version for forum posting
 
 ### Reorganization
-- **New directory structure**: flat `scripts/` folder split into `bash/`, `ps/`, `tools/`, and `shared/` for clarity
-  - `bash/` — Bash pipeline scripts (`.sh`)
+- **New directory structure**: flat `scripts/` folder split into `ps/`, `tools/`, and `shared/` for clarity
   - `ps/` — PowerShell pipeline scripts (`.ps1`)
   - `tools/` — Binary tools (`MediaInfo.exe`, `ffmpeg.exe`, `ffprobe.exe`)
   - `shared/` — Shared resources (`ai_call.ps1`, `ai_system_prompt.txt`, `mktorrent.ps1`)
@@ -134,7 +179,7 @@
 
 ### Initial Features
 - 8-step pipeline: MediaInfo, torrent creation, screenshots, TMDB, IMDB, AI description, screenshot upload, description builder
-- Dual script versions: Bash (Git Bash/MSYS2) and PowerShell for every step
+- PowerShell pipeline with .bat wrappers for every step
 - PowerShell bencoder (`mktorrent.ps1`) for .torrent creation
 - Gemini AI description generation in Bulgarian BBCode
 - TMDB best-match selection with BG title fetch

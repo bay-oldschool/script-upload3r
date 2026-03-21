@@ -1,5 +1,6 @@
 # Download required tools if not present
 $sw = [System.Diagnostics.Stopwatch]::StartNew()
+$PSScriptRoot = Split-Path -Parent -Path (Split-Path -Parent -Path $MyInvocation.MyCommand.Definition)
 
 $ToolsDir = Join-Path $PSScriptRoot "tools"
 if (!(Test-Path $ToolsDir)) { New-Item -ItemType Directory -Path $ToolsDir | Out-Null }

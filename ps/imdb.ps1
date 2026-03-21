@@ -23,7 +23,7 @@ param(
 
 $ErrorActionPreference = 'Stop'
 $PSScriptRoot = Split-Path -Parent -Path $MyInvocation.MyCommand.Definition
-$directory = $directory.TrimEnd('"').TrimEnd('\')
+$directory = $directory.TrimEnd('"').Trim().TrimEnd('\')
 if (-not $configfile) { $configfile = Join-Path "$PSScriptRoot/.." "config.jsonc" }
 
 if (Test-Path -LiteralPath $directory -PathType Leaf) {
@@ -41,6 +41,7 @@ if (-not $TmdbApiKey) {
     Write-Host "Skipping: 'tmdb_api_key' not configured in $configfile" -ForegroundColor Yellow
     exit 0
 }
+$MdblistApiKey = $config.mdblist_api_key
 $OmdbApiKey = $config.omdb_api_key
 
 $OutDir = "$PSScriptRoot/../output"
@@ -145,12 +146,11 @@ foreach ($candidate in $searchResponse.results) {
 }
 $tmdbId = $bestResult.id
 
-$detailsUrl = "https://api.themoviedb.org/3/$mediaType/$tmdbId`?api_key=$TmdbApiKey"
-$creditsUrl = "https://api.themoviedb.org/3/$mediaType/$tmdbId/credits`?api_key=$TmdbApiKey"
+$detailsUrl = "https://api.themoviedb.org/3/$mediaType/$tmdbId`?api_key=$TmdbApiKey&append_to_response=credits,keywords,videos"
 
 try {
     $details = Invoke-RestMethod -Uri $detailsUrl
-    $credits = Invoke-RestMethod -Uri $creditsUrl
+    $credits = $details.credits
 } catch {
     Write-Host "Warning: TMDB details fetch failed ($($_.Exception.Message)). Skipping." -ForegroundColor Yellow
     exit 0
@@ -184,14 +184,27 @@ if (-not $directors) { $directors = '(n/a)' }
 $cast = ($credits.cast[0..4] | ForEach-Object { "$($_.name) ($($_.character))" }) -join ', '
 $imdbUrl = $(if ($imdbId) { "https://www.imdb.com/title/$imdbId/" } else { '(not available)' })
 
-# Fetch Rotten Tomatoes rating via OMDB
-$rtRating = ''
-if ($OmdbApiKey -and $imdbId) {
+# Fetch Rotten Tomatoes ratings via MDBList
+$rtCritics = ''
+$rtAudience = ''
+if ($MdblistApiKey -and $imdbId) {
     try {
-        $omdb = Invoke-RestMethod -Uri "http://www.omdbapi.com/?i=$imdbId&apikey=$OmdbApiKey"
+        $mdblist = Invoke-RestMethod -Uri "https://mdblist.com/api/?apikey=$MdblistApiKey&i=$imdbId"
+        if ($mdblist.ratings) {
+            $tc = $mdblist.ratings | Where-Object { $_.source -eq 'tomatoes' }
+            if ($tc -and $tc.value -gt 0) { $rtCritics = "$($tc.value)%" }
+            $ta = $mdblist.ratings | Where-Object { $_.source -eq 'tomatoesaudience' }
+            if ($ta -and $ta.value -gt 0) { $rtAudience = "$($ta.value)%" }
+        }
+    } catch { }
+}
+# Fallback to OMDB if MDBList had no RT data
+if (-not $rtCritics -and $OmdbApiKey -and $imdbId) {
+    try {
+        $omdb = Invoke-RestMethod -Uri "https://www.omdbapi.com/?apikey=$OmdbApiKey&i=$imdbId"
         if ($omdb.Ratings) {
             $rt = $omdb.Ratings | Where-Object { $_.Source -eq 'Rotten Tomatoes' }
-            if ($rt) { $rtRating = $rt.Value }
+            if ($rt) { $rtCritics = $rt.Value }
         }
     } catch { }
 }
@@ -204,13 +217,24 @@ $lines = @(
     "TMDB ID:      $($details.id)",
     "Rating:       $rating/10 ($($details.vote_count) votes)"
 )
-if ($rtRating) { $lines += "RT Rating:    $rtRating" }
+if ($rtCritics) { $lines += "RT Critics:   $rtCritics" }
+if ($rtAudience) { $lines += "RT Audience:  $rtAudience" }
+$countries = ($details.production_countries | ForEach-Object { $_.name }) -join ', '
 $lines += @(
     "Genres:       $genres",
     "Runtime:      $runtime",
+    "Countries:    $countries",
     "Status:       $($details.status)"
 )
 if ($details.tagline) { $lines += "Tagline:      $($details.tagline)" }
+
+# Keywords
+$kwList = if ($mediaType -eq 'movie') { $details.keywords.keywords } else { $details.keywords.results }
+if ($kwList) {
+    $keywords = ($kwList | ForEach-Object { $_.name }) -join ', '
+    $lines += "Keywords:     $keywords"
+}
+
 $lines += @(
     "",
     "Director(s):  $directors",
@@ -220,6 +244,16 @@ $lines += @(
     $details.overview,
     ""
 )
+
+# Trailers (YouTube only)
+$trailers = @($details.videos.results | Where-Object { $_.site -eq 'YouTube' -and $_.type -match 'Trailer|Teaser' } | Select-Object -First 3)
+if ($trailers) {
+    $lines += "Trailers:"
+    foreach ($t in $trailers) {
+        $lines += "  $($t.name): https://www.youtube.com/watch?v=$($t.key)"
+    }
+    $lines += ""
+}
 
 $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
 [System.IO.File]::WriteAllLines($OutputFile, $lines, $utf8NoBom)
