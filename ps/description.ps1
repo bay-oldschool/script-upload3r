@@ -138,12 +138,15 @@ if (Test-Path -LiteralPath $TmdbFile) {
             }
         }
     }
-    # Override with season poster if available
-    foreach ($tl in $tmdbContent) {
-        if ($tl -match '^--- Season \d+') { $inSeason = $true; continue }
-        if ($inSeason -and $tl -match '^\s+Poster:' -and $tl -notmatch '\(none\)') {
-            $PosterUrl = ($tl -replace '^\s+Poster:\s*', '').Trim()
-            break
+    # Override with season poster if available (skip for multi-season packs like S01-S05)
+    $isSeasonPack = $TorrentName -match '(?i)S\d{2}\s*-\s*S\d{2}'
+    if (-not $isSeasonPack) {
+        foreach ($tl in $tmdbContent) {
+            if ($tl -match '^--- Season \d+') { $inSeason = $true; continue }
+            if ($inSeason -and $tl -match '^\s+Poster:' -and $tl -notmatch '\(none\)') {
+                $PosterUrl = ($tl -replace '^\s+Poster:\s*', '').Trim()
+                break
+            }
         }
     }
 }
@@ -375,7 +378,51 @@ if ($PosterUrl) {
         if ($metaEndIdx + 1 -lt $descLines.Count) {
             $contentBlock = ($descLines[($metaEndIdx + 1)..($descLines.Count - 1)] -join "`n").TrimStart("`n")
         }
-        $Description = "[table]`n[tr]`n[td][img=250]${PosterUrl}[/img][/td]`n[td]`n${Header}`n`n${metaBlock}`n[/td]`n[/tr]`n[/table]"
+        # Build torrent file list spoiler for the table
+        $fileListSpoiler = ''
+        if ($singleFile) {
+            $fi = Get-Item -LiteralPath $singleFile
+            $sizeGB = [math]::Round($fi.Length / 1GB, 2)
+            if ($sizeGB -ge 1) { $sizeLabel = "$sizeGB GB" } elseif ($fi.Length -ge 1MB) { $sizeLabel = "$([math]::Round($fi.Length / 1MB, 2)) MB" } else { $sizeLabel = "$([math]::Round($fi.Length / 1KB, 2)) KB" }
+            $ext = $fi.Extension.TrimStart('.').ToUpper()
+            $summary = "[b]Summary:[/b] 1 file ($ext) | Total: $sizeLabel"
+            $fileTable = "[table]`n[tr][td][b]Name[/b][/td][td][b]Size[/b][/td][/tr]`n[tr][td]${baseName}$($fi.Extension)[/td][td]${sizeLabel}[/td][/tr]`n[/table]"
+            $fileListSpoiler = "`n`n[spoiler=Torrent files]`n${summary}`n`n${fileTable}`n[/spoiler]"
+        } elseif (Test-Path -LiteralPath $directory -PathType Container) {
+            $allFiles = Get-ChildItem -LiteralPath $directory -Recurse -File | Sort-Object FullName
+            if ($allFiles.Count -gt 0) {
+                $dirPrefix = $directory.TrimEnd('\') + '\'
+                $rows = @()
+                $totalSize = [long]0
+                $typeCounts = @{}
+                foreach ($f in $allFiles) {
+                    $rel = $f.FullName
+                    if ($rel.StartsWith($dirPrefix)) { $rel = $rel.Substring($dirPrefix.Length) }
+                    $fSizeGB = [math]::Round($f.Length / 1GB, 2)
+                    if ($fSizeGB -ge 1) { $fSizeLabel = "$fSizeGB GB" } elseif ($f.Length -ge 1MB) { $fSizeLabel = "$([math]::Round($f.Length / 1MB, 2)) MB" } else { $fSizeLabel = "$([math]::Round($f.Length / 1KB, 2)) KB" }
+                    $rows += "[tr][td]${rel}[/td][td]${fSizeLabel}[/td][/tr]"
+                    $totalSize += $f.Length
+                    $ext = $f.Extension.TrimStart('.').ToUpper()
+                    if (-not $ext) { $ext = 'OTHER' }
+                    if ($typeCounts.ContainsKey($ext)) { $typeCounts[$ext]++ } else { $typeCounts[$ext] = 1 }
+                }
+                # Build summary: count by type and total size
+                $typeParts = ($typeCounts.GetEnumerator() | Sort-Object Name | ForEach-Object { "$($_.Value) $($_.Key)" })
+                $totalGB = [math]::Round($totalSize / 1GB, 2)
+                if ($totalGB -ge 1) {
+                    $totalLabel = "$totalGB GB"
+                } elseif ($totalSize -ge 1MB) {
+                    $totalLabel = "$([math]::Round($totalSize / 1MB, 2)) MB"
+                } else {
+                    $totalLabel = "$([math]::Round($totalSize / 1KB, 2)) KB"
+                }
+                $totalCount = $allFiles.Count
+                $summary = "[b]Summary:[/b] $totalCount files: " + ($typeParts -join ', ') + " | Total: $totalLabel"
+                $fileTable = "[table]`n[tr][td][b]Name[/b][/td][td][b]Size[/b][/td][/tr]`n" + ($rows -join "`n") + "`n[/table]"
+                $fileListSpoiler = "`n`n[spoiler=Torrent files]`n${summary}`n`n${fileTable}`n[/spoiler]"
+            }
+        }
+        $Description = "[table]`n[tr]`n[td][img=250]${PosterUrl}[/img][/td]`n[td]`n${Header}`n`n${metaBlock}${fileListSpoiler}`n[/td]`n[/tr]`n[/table]"
         if ($contentBlock) { $Description += "`n`n`n${contentBlock}" }
         # Banner goes above the table, header is already inside it
         if ($BannerUrl) { $Description = "[center][img=1920]${BannerUrl}[/img][/center]`n`n${Description}" }

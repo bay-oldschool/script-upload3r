@@ -175,9 +175,10 @@ else { # TV
     }
     $runtime = "$($details.number_of_seasons) season(s), $($details.number_of_episodes) episode(s)"
 
-    # Detect season number and fetch season-specific details
+    # Detect season number and fetch season-specific details (skip for multi-season packs like S01-S05)
     $SeasonNum = $null
-    if ($baseName -match '(?i)S(\d{2})') { $SeasonNum = [int]$matches[1] }
+    $isSeasonPack = $baseName -match '(?i)S\d{2}\s*-\s*S\d{2}'
+    if (-not $isSeasonPack -and $baseName -match '(?i)S(\d{2})') { $SeasonNum = [int]$matches[1] }
     if ($SeasonNum) {
         try {
             $seasonUrl = "https://api.themoviedb.org/3/tv/$tmdbId/season/$SeasonNum`?api_key=$TmdbApiKey"
@@ -261,8 +262,21 @@ $lines += @(
     ""
 )
 
-# Trailers (YouTube only)
-$trailers = @($details.videos.results | Where-Object { $_.site -eq 'YouTube' -and $_.type -match 'Trailer|Teaser' } | Select-Object -First 3)
+# Trailers (YouTube only) — prefer season-specific, fall back to show-level (oldest first)
+$trailers = @()
+if ($SeasonNum) {
+    try {
+        $seasonVidUrl = "https://api.themoviedb.org/3/tv/$tmdbId/season/$SeasonNum/videos?api_key=$TmdbApiKey"
+        $seasonVids = Invoke-RestMethod -Uri $seasonVidUrl
+        $trailers = @($seasonVids.results | Where-Object { $_.site -eq 'YouTube' -and $_.type -match 'Trailer|Teaser' } | Select-Object -First 3)
+        if ($trailers) { Write-Host "Found $($trailers.Count) season $SeasonNum trailer(s)" }
+    } catch {
+        Write-Host "Warning: Could not fetch season $SeasonNum videos" -ForegroundColor Yellow
+    }
+}
+if (-not $trailers -or $trailers.Count -eq 0) {
+    $trailers = @($details.videos.results | Where-Object { $_.site -eq 'YouTube' -and $_.type -match 'Trailer|Teaser' } | Sort-Object published_at | Select-Object -First 3)
+}
 if ($trailers) {
     $lines += "Trailers:"
     foreach ($t in $trailers) {

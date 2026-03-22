@@ -210,10 +210,11 @@ try {
     }
 } catch { }
 
-# Fetch season-specific metadata for TV shows
+# Fetch season-specific metadata for TV shows (skip for multi-season packs like S01-S05)
 $SeasonNum = $null
 if ($mediaType -eq 'tv') {
-    if ($baseName -match '(?i)S(\d{2})') { $SeasonNum = [int]$matches[1] }
+    $isSeasonPack = $baseName -match '(?i)S\d{2}\s*-\s*S\d{2}'
+    if (-not $isSeasonPack -and $baseName -match '(?i)S(\d{2})') { $SeasonNum = [int]$matches[1] }
 }
 if ($SeasonNum) {
     Write-Host "Fetching season $SeasonNum metadata for TV show ID $($bestItem.id)"

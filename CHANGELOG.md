@@ -1,5 +1,13 @@
 # Changelog
 
+## v4.1.0 — 2026-03-22
+
+### New Features
+- **Torrent file list spoiler**: adds a `[spoiler=Torrent files]` section inside the metadata table column with a Name/Size table and summary (total count, count by type, total size in KB/MB/GB)
+- **Multi-season pack detection**: patterns like `S01-S05` are detected; uses the show poster and total show runtime instead of season-specific ones
+- **Season-specific trailers**: fetches trailers from TMDB season endpoint; falls back to show-level trailers sorted oldest-first
+- **Season year for AI description**: when a season's air date year differs from the show's premiere year, passes the correct season year to the AI prompt
+
 ## v4.0.0 — 2026-03-21
 
 ### Breaking Changes

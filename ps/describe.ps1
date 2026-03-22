@@ -178,11 +178,12 @@ $tmdbInfo = [PSCustomObject]@{
 Write-Host "Title: $($tmdbInfo.Title)"
 Write-Host "Date: $($tmdbInfo.Date)"
 
-# Fetch season-specific metadata for TV shows
+# Fetch season-specific metadata for TV shows (skip for multi-season packs like S01-S05)
 $seasonInfo = $null
 $SeasonNum = $null
 if ($mediaType -eq 'tv') {
-    if ($dirName -match '(?i)S(\d{2})') { $SeasonNum = [int]$matches[1] }
+    $isSeasonPack = $dirName -match '(?i)S\d{2}\s*-\s*S\d{2}'
+    if (-not $isSeasonPack -and $dirName -match '(?i)S(\d{2})') { $SeasonNum = [int]$matches[1] }
 }
 if ($SeasonNum) {
     Write-Host "Fetching season $SeasonNum metadata..."
@@ -198,6 +199,15 @@ if ($SeasonNum) {
         }
         # Use season poster if available
         if ($seasonInfo.Poster) { $tmdbInfo.Poster = $seasonInfo.Poster }
+        # Use season air date year if different from show's first air date
+        if ($seasonInfo.AirDate) {
+            $seasonYear = $seasonInfo.AirDate -replace '-.*', ''
+            $showYear = $tmdbInfo.Date -replace '-.*', ''
+            if ($seasonYear -ne $showYear) {
+                $tmdbInfo.Date = $seasonInfo.AirDate
+                Write-Host "Using season $SeasonNum year: $seasonYear (show started: $showYear)"
+            }
+        }
         # Use season overview if show overview is empty or override with season-specific
         if ($seasonInfo.Overview) {
             Write-Host "Season $SeasonNum overview found"
