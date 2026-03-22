@@ -68,10 +68,11 @@ if (-not $Year -and (Test-Path -LiteralPath $TmdbFile)) {
 }
 if (-not $Year) { $Year = '????' }
 
-# Get BG title, EN title, and banner from TMDB file
+# Get BG title, EN title, banner and poster from TMDB file
 $BgTitle = ''
 $TmdbEnTitle = ''
 $BannerUrl = ''
+$PosterUrl = ''
 if (Test-Path -LiteralPath $TmdbFile) {
     $tmdbContent = Get-Content -LiteralPath $TmdbFile -Encoding UTF8
     $bgLine = $tmdbContent | Where-Object { $_ -match '^\s+BG Title:' } | Select-Object -First 1
@@ -108,6 +109,43 @@ if (Test-Path -LiteralPath $TmdbFile) {
             $BannerUrl = ($bannerLine -replace '^\s+Banner:\s*', '').Trim()
         }
     }
+    # Extract poster URL from best-matched result (the one with BG Title)
+    if ($BgTitle) {
+        for ($i = 0; $i -lt $tmdbContent.Count; $i++) {
+            if ($tmdbContent[$i] -match '^\s+BG Title:') {
+                # Walk back to find the Poster line for this result
+                for ($j = $i - 1; $j -ge 0; $j--) {
+                    if ($tmdbContent[$j] -match '^\s+Poster:' -and $tmdbContent[$j] -notmatch '\(none\)') {
+                        $PosterUrl = ($tmdbContent[$j] -replace '^\s+Poster:\s*', '').Trim()
+                        break
+                    }
+                    if ($tmdbContent[$j] -match '^\[\d+\]') { break }
+                }
+                break
+            }
+        }
+    }
+    # Fallback: poster from first result
+    if (-not $PosterUrl) {
+        # Find poster between [1] and [2] markers
+        $inFirst = $false
+        foreach ($tl in $tmdbContent) {
+            if ($tl -match '^\[1\]') { $inFirst = $true; continue }
+            if ($tl -match '^\[2\]') { break }
+            if ($inFirst -and $tl -match '^\s+Poster:' -and $tl -notmatch '\(none\)') {
+                $PosterUrl = ($tl -replace '^\s+Poster:\s*', '').Trim()
+                break
+            }
+        }
+    }
+    # Override with season poster if available
+    foreach ($tl in $tmdbContent) {
+        if ($tl -match '^--- Season \d+') { $inSeason = $true; continue }
+        if ($inSeason -and $tl -match '^\s+Poster:' -and $tl -notmatch '\(none\)') {
+            $PosterUrl = ($tl -replace '^\s+Poster:\s*', '').Trim()
+            break
+        }
+    }
 }
 
 $enHeader = if ($TmdbEnTitle) { $TmdbEnTitle } else { $EnTitle }
@@ -121,10 +159,25 @@ if ($BgTitle -and $BgTitle -ne $enHeader) {
 $Description = ''
 
 $TmdbBgDesc = ''
+$SeasonBgDesc = ''
 if (Test-Path -LiteralPath $TmdbFile) {
     $tmdbLines = Get-Content -LiteralPath $TmdbFile -Encoding UTF8
     $bgDescLine = $tmdbLines | Where-Object { $_ -match '^\s+\(bg\):' } | Select-Object -First 1
     if ($bgDescLine) { $TmdbBgDesc = ($bgDescLine -replace '^\s+\(bg\):\s*', '').Trim() }
+
+    # Check for season-specific data
+    $inSeason = $false
+    foreach ($tl in $tmdbLines) {
+        if ($tl -match '^--- Season \d+') { $inSeason = $true; continue }
+        if ($inSeason) {
+            if ($tl -match '^\s+\(bg\):') {
+                $SeasonBgDesc = ($tl -replace '^\s+\(bg\):\s*', '').Trim()
+            }
+            if ($tl.Trim() -eq '' -and $SeasonBgDesc) { break }
+        }
+    }
+    # Prefer season BG description over show-level one if available
+    if ($SeasonBgDesc) { $TmdbBgDesc = $SeasonBgDesc }
 }
 
 if (Test-Path -LiteralPath $GeminiFile) {
@@ -294,11 +347,52 @@ if ($imdbTrailers.Count -gt 0) {
     }
 }
 
-# Prepend banner and header
-$Preamble = ''
-if ($BannerUrl) { $Preamble = "[center][img=1920]${BannerUrl}[/img][/center]`n`n" }
-$Preamble += "${Header}`n`n"
-$Description = "${Preamble}${Description}"
+# Wrap metadata block in a table with poster (poster in left column, metadata in right)
+if ($PosterUrl) {
+    $descLines = $Description -split "`n"
+    # Find where the metadata block ends: metadata lines start with emoji + [b] or are blank lines between them
+    # Content starts at lines like [b]Title[/b], emoji+[b]Plot/Сюжет, emoji+title line (the bold title summary)
+    $metaEndIdx = -1
+    $lastMetaIdx = -1
+    for ($i = 0; $i -lt $descLines.Count; $i++) {
+        $ln = $descLines[$i].Trim()
+        if ($ln -eq '') { continue }
+        # Metadata lines: any line with emoji(s) followed by [b]...:[/b] pattern
+        # Use .+ to match multi-byte emoji characters (surrogate pairs)
+        if ($ln -match '^.+\[b\][^\[]*:\[/b\]') {
+            $lastMetaIdx = $i
+        }
+        # Stop at content lines: bold title line, plot section, or narrative text
+        elseif ($lastMetaIdx -ge 0) {
+            $metaEndIdx = $lastMetaIdx
+            break
+        }
+    }
+    if ($metaEndIdx -lt 0 -and $lastMetaIdx -ge 0) { $metaEndIdx = $lastMetaIdx }
+    if ($metaEndIdx -ge 0) {
+        $metaBlock = ($descLines[0..$metaEndIdx] -join "`n").TrimEnd()
+        $contentBlock = ''
+        if ($metaEndIdx + 1 -lt $descLines.Count) {
+            $contentBlock = ($descLines[($metaEndIdx + 1)..($descLines.Count - 1)] -join "`n").TrimStart("`n")
+        }
+        $Description = "[table]`n[tr]`n[td][img=250]${PosterUrl}[/img][/td]`n[td]`n${Header}`n`n${metaBlock}`n[/td]`n[/tr]`n[/table]"
+        if ($contentBlock) { $Description += "`n`n`n${contentBlock}" }
+        # Banner goes above the table, header is already inside it
+        if ($BannerUrl) { $Description = "[center][img=1920]${BannerUrl}[/img][/center]`n`n${Description}" }
+    } else {
+        # Poster available but no metadata found — fall back to normal layout
+        $Preamble = ''
+        if ($BannerUrl) { $Preamble = "[center][img=1920]${BannerUrl}[/img][/center]`n`n" }
+        $Preamble += "${Header}`n`n"
+        $Description = "${Preamble}${Description}"
+    }
+} else {
+    # No poster — prepend banner and header normally
+    $Preamble = ''
+    if ($BannerUrl) { $Preamble = "[center][img=1920]${BannerUrl}[/img][/center]`n`n" }
+    $Preamble += "${Header}`n`n"
+    $Description = "${Preamble}${Description}"
+}
 
 # Add screenshots
 if (Test-Path -LiteralPath $ScreensFile) {

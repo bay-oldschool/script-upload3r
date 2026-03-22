@@ -342,4 +342,4 @@ Width-based detection handles non-standard heights (e.g. 1920x960 correctly maps
 ![3](https://img.onlyimage.org/Q4Wa6G.png)
 ![4](https://img.onlyimage.org/Q4WSxH.png)
 ![5](https://img.onlyimage.org/Q4WXxJ.png)
-![6](https://img.onlyimage.org/Q4WZs6.png)
+![6](https://img.onlyimage.org/Q4LrK6.png)

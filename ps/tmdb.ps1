@@ -210,6 +210,50 @@ try {
     }
 } catch { }
 
+# Fetch season-specific metadata for TV shows
+$SeasonNum = $null
+if ($mediaType -eq 'tv') {
+    if ($baseName -match '(?i)S(\d{2})') { $SeasonNum = [int]$matches[1] }
+}
+if ($SeasonNum) {
+    Write-Host "Fetching season $SeasonNum metadata for TV show ID $($bestItem.id)"
+    try {
+        $seasonUrl = "https://api.themoviedb.org/3/tv/$($bestItem.id)/season/$SeasonNum`?api_key=$TmdbApiKey"
+        $seasonData = Invoke-RestMethod -Uri $seasonUrl
+        $outputLines.Add("--- Season $SeasonNum ---")
+        if ($seasonData.name) { $outputLines.Add("    Season Name:  $($seasonData.name)") }
+        if ($seasonData.air_date) { $outputLines.Add("    Air Date:     $($seasonData.air_date)") }
+        if ($seasonData.overview) { $outputLines.Add("    Overview:     $($seasonData.overview)") }
+        $epCount = if ($seasonData.episodes) { $seasonData.episodes.Count } else { 0 }
+        if ($epCount -gt 0) { $outputLines.Add("    Episodes:     $epCount") }
+        $sPoster = if ($seasonData.poster_path) { "$imageBase/w500$($seasonData.poster_path)" } else { '(none)' }
+        $outputLines.Add("    Poster:       $sPoster")
+
+        # Season-specific BG translation
+        if ($TranslateLang) {
+            try {
+                $seasonBgUrl = "https://api.themoviedb.org/3/tv/$($bestItem.id)/season/$SeasonNum`?api_key=$TmdbApiKey&language=$TranslateLang"
+                $seasonBg = Invoke-RestMethod -Uri $seasonBgUrl
+                if ($seasonBg.overview -and $seasonBg.overview -ne $seasonData.overview) {
+                    $outputLines.Add("    ($TranslateLang):  $($seasonBg.overview)")
+                } elseif ($seasonData.overview -and $GoogleApiKey) {
+                    try {
+                        $transUrl = "https://translation.googleapis.com/language/translate/v2?key=$GoogleApiKey"
+                        $transBody = @{ q = $seasonData.overview; target = $TranslateLang; source = 'en' } | ConvertTo-Json
+                        $transResp = Invoke-RestMethod -Uri $transUrl -Method POST -ContentType 'application/json' -Body $transBody
+                        $translated = $transResp.data.translations[0].translatedText
+                        if ($translated) { $outputLines.Add("    ($TranslateLang):  $translated") }
+                    } catch {}
+                }
+            } catch {}
+        }
+        $outputLines.Add("")
+        Write-Host "Season ${SeasonNum}: $($seasonData.name), $epCount episodes"
+    } catch {
+        Write-Host "Warning: Could not fetch season $SeasonNum details ($($_.Exception.Message))" -ForegroundColor Yellow
+    }
+}
+
 $outputLines | Out-File -LiteralPath $OutputFile -Encoding utf8
 $outputLines | Write-Host
 

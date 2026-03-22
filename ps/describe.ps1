@@ -177,6 +177,36 @@ $tmdbInfo = [PSCustomObject]@{
 }
 Write-Host "Title: $($tmdbInfo.Title)"
 Write-Host "Date: $($tmdbInfo.Date)"
+
+# Fetch season-specific metadata for TV shows
+$seasonInfo = $null
+$SeasonNum = $null
+if ($mediaType -eq 'tv') {
+    if ($dirName -match '(?i)S(\d{2})') { $SeasonNum = [int]$matches[1] }
+}
+if ($SeasonNum) {
+    Write-Host "Fetching season $SeasonNum metadata..."
+    try {
+        $seasonUrl = "https://api.themoviedb.org/3/tv/$($item.id)/season/$SeasonNum`?api_key=$TmdbApiKey"
+        $seasonData = Invoke-RestMethod -Uri $seasonUrl
+        $seasonInfo = [PSCustomObject]@{
+            Name     = $seasonData.name
+            AirDate  = $seasonData.air_date
+            Overview = $seasonData.overview
+            Episodes = $(if ($seasonData.episodes) { $seasonData.episodes.Count } else { 0 })
+            Poster   = $(if ($seasonData.poster_path) { "$imageBase/w500$($seasonData.poster_path)" } else { $null })
+        }
+        # Use season poster if available
+        if ($seasonInfo.Poster) { $tmdbInfo.Poster = $seasonInfo.Poster }
+        # Use season overview if show overview is empty or override with season-specific
+        if ($seasonInfo.Overview) {
+            Write-Host "Season $SeasonNum overview found"
+        }
+        Write-Host "Season ${SeasonNum}: $($seasonInfo.Name), $($seasonInfo.Episodes) episodes"
+    } catch {
+        Write-Host "Warning: Could not fetch season $SeasonNum details" -ForegroundColor Yellow
+    }
+}
 Write-Host ""
 
 # === Step 2: Extracting MediaInfo ===
@@ -258,6 +288,11 @@ $directorLine = $(if ($imdbDirectors) { "`nDirector(s): $imdbDirectors" } else {
 $genreLine2 = $(if ($imdbGenres) { "`nGenres: $imdbGenres" } else { "" })
 $ratingLine2 = $(if ($imdbRating) { "`nRating: $imdbRating" } else { "" })
 $rtLine2 = $(if ($imdbRt) { "`nRotten Tomatoes: $imdbRt" } else { "" })
+$seasonLine = ''
+if ($seasonInfo) {
+    $seasonLine = "`nSeason: $($seasonInfo.Name) ($($seasonInfo.Episodes) episodes, air date: $($seasonInfo.AirDate))"
+    if ($seasonInfo.Overview) { $seasonLine += "`nSeason Overview: $($seasonInfo.Overview)" }
+}
 $promptContent = @"
 Title: $($tmdbInfo.Title)
 Date: $($tmdbInfo.Date)
@@ -266,7 +301,7 @@ Overview: $($tmdbInfo.Overview)
 Poster: $($tmdbInfo.Poster)
 Banner: $($tmdbInfo.Banner)$bgTitleLine
 Release Year: $releaseYear
-Directory: $dirName$castLine2$directorLine$genreLine2$ratingLine2$rtLine2$mediaLine
+Directory: $dirName$seasonLine$castLine2$directorLine$genreLine2$ratingLine2$rtLine2$mediaLine
 "@
 [System.IO.File]::WriteAllText($promptFile, $promptContent, $utf8NoBom)
 

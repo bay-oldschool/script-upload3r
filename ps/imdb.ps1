@@ -174,6 +174,22 @@ else { # TV
         $imdbId = ''
     }
     $runtime = "$($details.number_of_seasons) season(s), $($details.number_of_episodes) episode(s)"
+
+    # Detect season number and fetch season-specific details
+    $SeasonNum = $null
+    if ($baseName -match '(?i)S(\d{2})') { $SeasonNum = [int]$matches[1] }
+    if ($SeasonNum) {
+        try {
+            $seasonUrl = "https://api.themoviedb.org/3/tv/$tmdbId/season/$SeasonNum`?api_key=$TmdbApiKey"
+            $seasonData = Invoke-RestMethod -Uri $seasonUrl
+            $seasonEpCount = if ($seasonData.episodes) { $seasonData.episodes.Count } else { 0 }
+            $runtime = "Season ${SeasonNum}: $seasonEpCount episode(s)"
+            if ($seasonData.air_date) { $date = $seasonData.air_date }
+            Write-Host "Season $SeasonNum detected: $seasonEpCount episodes, air date $($seasonData.air_date)"
+        } catch {
+            Write-Host "Warning: Could not fetch season $SeasonNum details" -ForegroundColor Yellow
+        }
+    }
 }
 
 $itemYear = $(if ($date) { $date.Substring(0, 4) } else { '????' })
