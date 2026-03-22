@@ -86,7 +86,7 @@ echo Opening folder browser...
 echo.
 
 set "MEDIA_PATH="
-for /f "usebackq delims=" %%I in (`powershell -Command "Add-Type -AssemblyName System.Windows.Forms; $f = New-Object System.Windows.Forms.FolderBrowserDialog; $f.Description = 'Select media folder:'; $f.ShowNewFolderButton = $false; $f.RootFolder = [System.Environment+SpecialFolder]::MyComputer; $f.ShowDialog() | Out-Null; if ($f.SelectedPath) { $f.SelectedPath } else { '' }"`) do set "MEDIA_PATH=%%I"
+for /f "usebackq delims=" %%I in (`powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0ps\browse_folder.ps1" -title "Select media folder"`) do set "MEDIA_PATH=%%I"
 
 if not "!MEDIA_PATH!"=="" goto validate_path
 echo.
@@ -100,7 +100,7 @@ echo Opening file browser...
 echo.
 
 set "MEDIA_PATH="
-for /f "usebackq delims=" %%I in (`powershell -Command "Add-Type -AssemblyName System.Windows.Forms; $f = New-Object System.Windows.Forms.OpenFileDialog; $f.Title = 'Select media file:'; $f.Filter = 'Video files (*.mkv;*.mp4;*.avi)|*.mkv;*.mp4;*.avi|All files (*.*)|*.*'; $f.ShowDialog() | Out-Null; if ($f.FileName) { $f.FileName } else { '' }"`) do set "MEDIA_PATH=%%I"
+for /f "usebackq delims=" %%I in (`powershell -Command "Add-Type -AssemblyName System.Windows.Forms; $f = New-Object System.Windows.Forms.OpenFileDialog; $f.Title = 'Select media file:'; $f.Filter = 'Video files (*.mkv;*.mp4;*.avi;*.ts)|*.mkv;*.mp4;*.avi;*.ts|All files (*.*)|*.*'; $f.ShowDialog() | Out-Null; if ($f.FileName) { $f.FileName } else { '' }"`) do set "MEDIA_PATH=%%I"
 
 if not "!MEDIA_PATH!"=="" goto validate_path
 echo.

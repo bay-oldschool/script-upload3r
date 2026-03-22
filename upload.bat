@@ -69,7 +69,7 @@ echo.
 echo Opening folder browser...
 echo.
 
-for /f "usebackq delims=" %%I in (`powershell -Command "Add-Type -AssemblyName System.Windows.Forms; $f = New-Object System.Windows.Forms.FolderBrowserDialog; $f.Description = 'Select the content directory:'; $f.ShowNewFolderButton = $false; $f.RootFolder = [System.Environment+SpecialFolder]::MyComputer; $f.ShowDialog() | Out-Null; if ($f.SelectedPath) { $f.SelectedPath } else { '' }"`) do set "USER_PATH=%%I"
+for /f "usebackq delims=" %%I in (`powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0ps\browse_folder.ps1" -title "Select the content directory"`) do set "USER_PATH=%%I"
 
 if not "!USER_PATH!"=="" goto save_and_continue
 echo.
