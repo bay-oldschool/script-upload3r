@@ -15,15 +15,15 @@ if (!(Test-Path $configPath)) {
     Copy-Item $examplePath $configPath
     Write-Host "Created config.jsonc from example. Edit it with your settings." -ForegroundColor Green
 } else {
-    Write-Host "config.jsonc already exists, skipping."
+    Write-Host "config.jsonc already exists, skipping." -ForegroundColor DarkGray
 }
 
 # --- ffmpeg & ffprobe ---
 if (!(Test-Path "$ToolsDir\ffmpeg.exe") -or !(Test-Path "$ToolsDir\ffprobe.exe")) {
-    Write-Host "Downloading ffmpeg..."
+    Write-Host "Downloading ffmpeg..." -ForegroundColor Cyan
     $tmp = "$ToolsDir\ffmpeg.zip"
     & curl.exe -L -o "$tmp" "$FfmpegUrl"
-    Write-Host "Extracting ffmpeg..."
+    Write-Host "Extracting ffmpeg..." -ForegroundColor Cyan
     Add-Type -AssemblyName System.IO.Compression.FileSystem
     $zip = [System.IO.Compression.ZipFile]::OpenRead($tmp)
     foreach ($entry in $zip.Entries) {
@@ -34,17 +34,17 @@ if (!(Test-Path "$ToolsDir\ffmpeg.exe") -or !(Test-Path "$ToolsDir\ffprobe.exe")
     }
     $zip.Dispose()
     Remove-Item $tmp -Force
-    Write-Host "ffmpeg & ffprobe installed."
+    Write-Host "ffmpeg & ffprobe installed." -ForegroundColor Green
 } else {
-    Write-Host "ffmpeg & ffprobe already present, skipping."
+    Write-Host "ffmpeg & ffprobe already present, skipping." -ForegroundColor DarkGray
 }
 
 # --- MediaInfo ---
 if (!(Test-Path "$ToolsDir\MediaInfo.exe")) {
-    Write-Host "Downloading MediaInfo..."
+    Write-Host "Downloading MediaInfo..." -ForegroundColor Cyan
     $tmp = "$ToolsDir\mediainfo.zip"
     & curl.exe -L -o "$tmp" "$MediaInfoUrl"
-    Write-Host "Extracting MediaInfo..."
+    Write-Host "Extracting MediaInfo..." -ForegroundColor Cyan
     Add-Type -AssemblyName System.IO.Compression.FileSystem
     $zip = [System.IO.Compression.ZipFile]::OpenRead($tmp)
     foreach ($entry in $zip.Entries) {
@@ -55,10 +55,37 @@ if (!(Test-Path "$ToolsDir\MediaInfo.exe")) {
     }
     $zip.Dispose()
     Remove-Item $tmp -Force
-    Write-Host "MediaInfo installed."
+    Write-Host "MediaInfo installed." -ForegroundColor Green
 } else {
-    Write-Host "MediaInfo already present, skipping."
+    Write-Host "MediaInfo already present, skipping." -ForegroundColor DarkGray
+}
+
+# --- ImageMagick (optional — for sixel image preview in terminal) ---
+$magickCmd = Get-Command magick -ErrorAction SilentlyContinue
+if (-not $magickCmd) {
+    $imDir = Get-ChildItem 'C:\Program Files\ImageMagick-*' -Directory -ErrorAction SilentlyContinue | Select-Object -First 1
+    if ($imDir) { $magickCmd = $true }
+}
+if (-not $magickCmd) {
+    Write-Host ""
+    Write-Host "ImageMagick enables image preview in terminal (banner, poster, screenshots)." -ForegroundColor DarkYellow
+    $answer = Read-Host "Install ImageMagick? (y/n) [y]"
+    if ($answer -match '^[nN]') {
+        Write-Host "Skipping ImageMagick." -ForegroundColor DarkGray
+    } else {
+        $wingetCmd = Get-Command winget -ErrorAction SilentlyContinue
+        if ($wingetCmd) {
+            Write-Host "Installing ImageMagick via winget..." -ForegroundColor Cyan
+            & winget install ImageMagick.ImageMagick --accept-source-agreements --accept-package-agreements
+            Write-Host "ImageMagick installed. Restart terminal for PATH update." -ForegroundColor Yellow
+        } else {
+            Write-Host "winget not found. Install ImageMagick manually from https://imagemagick.org" -ForegroundColor Yellow
+        }
+    }
+} else {
+    Write-Host "ImageMagick already present, skipping." -ForegroundColor DarkGray
 }
 
 $sw.Stop()
+Write-Host ""
 Write-Host "All tools ready. Took $([math]::Round($sw.Elapsed.TotalSeconds, 1))s" -ForegroundColor Green

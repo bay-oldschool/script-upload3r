@@ -18,7 +18,9 @@ param(
 
     [switch]$tv,
 
-    [string]$query
+    [string]$query,
+
+    [int]$season = -1
 )
 
 $ErrorActionPreference = 'Stop'
@@ -70,7 +72,7 @@ $OutDir = "$PSScriptRoot/../output"
 New-Item -Path $OutDir -ItemType Directory -ErrorAction SilentlyContinue
 
 $dirName = $baseName
-$OutputFile = Join-Path -Path $OutDir -ChildPath "${dirName}_description.txt"
+$OutputFile = Join-Path -Path $OutDir -ChildPath "${dirName}_description.bbcode"
 
 if ($query) {
     $cleanName = $query
@@ -79,7 +81,7 @@ if ($query) {
 } else {
     $yearMatch = [regex]::Match($dirName, '\b(19|20)\d{2}\b')
     $Year = $(if ($yearMatch.Success) { $yearMatch.Value } else { $null })
-    $cleanName = $dirName -replace '[._]', ' ' -replace ' - [Ss]\d{2}.*', '' -replace '\b[Ss]\d{2}.*', '' -replace '\b(19|20)\d{2}\b.*', '' -replace ' - WEBDL.*', '' -replace ' - WEB-DL.*', '' -replace '[\s([]+$', ''
+    $cleanName = $dirName -replace '[._]', ' ' -replace '(?i)\bSEASON\s+\d+\b', '' -replace ' - [Ss]\d{2}.*', '' -replace '\b[Ss]\d{2}.*', '' -replace '\b(19|20)\d{2}\b.*', '' -replace ' - WEBDL.*', '' -replace ' - WEB-DL.*', '' -replace '[\s([]+$', ''
 }
 $mediaType = $(if ($tv.IsPresent) { "tv" } else { "movie" })
 
@@ -182,8 +184,13 @@ Write-Host "Date: $($tmdbInfo.Date)"
 $seasonInfo = $null
 $SeasonNum = $null
 if ($mediaType -eq 'tv') {
-    $isSeasonPack = $dirName -match '(?i)S\d{2}\s*-\s*S\d{2}'
-    if (-not $isSeasonPack -and $dirName -match '(?i)S(\d{2})') { $SeasonNum = [int]$matches[1] }
+    if ($season -gt 0) {
+        $SeasonNum = $season
+    } elseif ($season -eq -1) {
+        $isSeasonPack = $dirName -match '(?i)S\d{2}\s*-\s*S\d{2}'
+        if (-not $isSeasonPack -and $dirName -match '(?i)S(\d{2})') { $SeasonNum = [int]$matches[1] }
+    }
+    # season=0 means all seasons pack, skip season-specific metadata
 }
 if ($SeasonNum) {
     Write-Host "Fetching season $SeasonNum metadata..."

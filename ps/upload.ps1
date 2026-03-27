@@ -18,14 +18,26 @@ param(
     [string]$configfile,
 
     [Alias('a')]
-    [switch]$auto
+    [switch]$auto,
+
+    [Alias('r')]
+    [string]$requestfile,
+
+    [Alias('t')]
+    [string]$torrentfile,
+
+    [Alias('d')]
+    [string]$descriptionfile,
+
+    [Alias('h')]
+    [switch]$help
 )
 
 $ErrorActionPreference = 'Stop'
 $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
 $PSScriptRoot = Split-Path -Parent -Path (Split-Path -Parent -Path $MyInvocation.MyCommand.Definition)
 
-if (-not $directory) {
+if ($help -or -not $directory) {
     Write-Host @"
 Usage: upload.ps1 [-auto] <directory> [config.jsonc]
 
@@ -38,8 +50,11 @@ Arguments:
   config.jsonc   Path to JSONC config file (default: ./config.jsonc)
 
 Options:
-  -a, -auto    Skip interactive prompts, use defaults
-  -h, -help    Show this help message
+  -a, -auto          Skip interactive prompts, use defaults
+  -r <file>          Override upload request file
+  -t <file>          Override torrent file
+  -d <file>          Override description file
+  -h, -help          Show this help message
 "@
     exit 1
 }
@@ -71,9 +86,9 @@ if (-not $ApiKey) { Write-Host "Skipping: 'api_key' not configured in $configfil
 $TrackerUrl = $config.tracker_url
 
 $OutDir          = Join-Path $PSScriptRoot "output"
-$RequestFile     = Join-Path $OutDir "${TorrentName}_upload_request.txt"
-$TorrentFile     = Join-Path $OutDir "${TorrentName}.torrent"
-$TorrentDescFile = Join-Path $OutDir "${TorrentName}_torrent_description.txt"
+$RequestFile     = if ($requestfile) { $requestfile } else { Join-Path $OutDir "${TorrentName}_upload_request.txt" }
+$TorrentFile     = if ($torrentfile) { $torrentfile } else { Join-Path $OutDir "${TorrentName}.torrent" }
+$TorrentDescFile = if ($descriptionfile) { $descriptionfile } else { Join-Path $OutDir "${TorrentName}_torrent_description.bbcode" }
 
 if (-not (Test-Path -LiteralPath $RequestFile)) {
     Write-Host "Error: request file '$RequestFile' not found. Run the pipeline first." -ForegroundColor Red
@@ -121,9 +136,11 @@ foreach ($cat in $allCategories) {
 $categories = @($allCategories | Where-Object { $_.type -eq $catType })
 
 if (-not $auto.IsPresent) {
+    Write-Host "  (enter 'c' at any prompt to cancel)" -ForegroundColor DarkGray
+
     # Show category picker with default preselected
     Write-Host ""
-    Write-Host "Select category ($catType):"
+    Write-Host "Select category ($catType):" -ForegroundColor Cyan
     $defaultIdx = 0
     for ($i = 0; $i -lt $categories.Count; $i++) {
         $marker = ''
@@ -134,13 +151,14 @@ if (-not $auto.IsPresent) {
         Write-Host "  $($i+1)) $($categories[$i].name) (id=$($categories[$i].id))${marker}"
     }
     $catChoice = Read-Host "Category [$($defaultIdx + 1)]"
+    if ($catChoice -eq 'c') { Write-Host "Cancelled." -ForegroundColor Yellow; exit 2 }
     if (-not $catChoice) { $catChoice = $defaultIdx + 1 }
     $catIdx = [int]$catChoice - 1
     if ($catIdx -ge 0 -and $catIdx -lt $categories.Count) {
         $CategoryId = [string]$categories[$catIdx].id
-        Write-Host "Selected: $($categories[$catIdx].name) (category_id=$CategoryId)"
+        Write-Host "Selected: $($categories[$catIdx].name) (category_id=$CategoryId)" -ForegroundColor Green
     } else {
-        Write-Host "Invalid choice, using default: $($categories[$defaultIdx].name)"
+        Write-Host "Invalid choice, using default: $($categories[$defaultIdx].name)" -ForegroundColor Yellow
     }
 
     # Read types from types.jsonc and show picker
@@ -148,7 +166,7 @@ if (-not $auto.IsPresent) {
     $allTypes = ([System.IO.File]::ReadAllText($TypesFile, $utf8NoBom) -split "`n" | Where-Object { $_ -notmatch '^\s*//' }) -join "`n" | ConvertFrom-Json
 
     Write-Host ""
-    Write-Host "Select type:"
+    Write-Host "Select type:" -ForegroundColor Cyan
     $defaultIdx = 0
     for ($i = 0; $i -lt $allTypes.Count; $i++) {
         $marker = ''
@@ -159,13 +177,14 @@ if (-not $auto.IsPresent) {
         Write-Host "  $($i+1)) $($allTypes[$i].name) (id=$($allTypes[$i].id))${marker}"
     }
     $typeChoice = Read-Host "Type [$($defaultIdx + 1)]"
+    if ($typeChoice -eq 'c') { Write-Host "Cancelled." -ForegroundColor Yellow; exit 2 }
     if (-not $typeChoice) { $typeChoice = $defaultIdx + 1 }
     $typeIdx = [int]$typeChoice - 1
     if ($typeIdx -ge 0 -and $typeIdx -lt $allTypes.Count) {
         $TypeId = [string]$allTypes[$typeIdx].id
-        Write-Host "Selected: $($allTypes[$typeIdx].name) (type_id=$TypeId)"
+        Write-Host "Selected: $($allTypes[$typeIdx].name) (type_id=$TypeId)" -ForegroundColor Green
     } else {
-        Write-Host "Invalid choice, using default: $($allTypes[$defaultIdx].name)"
+        Write-Host "Invalid choice, using default: $($allTypes[$defaultIdx].name)" -ForegroundColor Yellow
     }
 
     # Read resolutions from resolutions.jsonc and show picker
@@ -173,7 +192,7 @@ if (-not $auto.IsPresent) {
     $allRes = ([System.IO.File]::ReadAllText($ResFile, $utf8NoBom) -split "`n" | Where-Object { $_ -notmatch '^\s*//' }) -join "`n" | ConvertFrom-Json
 
     Write-Host ""
-    Write-Host "Select resolution:"
+    Write-Host "Select resolution:" -ForegroundColor Cyan
     $defaultIdx = 0
     for ($i = 0; $i -lt $allRes.Count; $i++) {
         $marker = ''
@@ -184,37 +203,42 @@ if (-not $auto.IsPresent) {
         Write-Host "  $($i+1)) $($allRes[$i].name) (id=$($allRes[$i].id))${marker}"
     }
     $resChoice = Read-Host "Resolution [$($defaultIdx + 1)]"
+    if ($resChoice -eq 'c') { Write-Host "Cancelled." -ForegroundColor Yellow; exit 2 }
     if (-not $resChoice) { $resChoice = $defaultIdx + 1 }
     $resIdx = [int]$resChoice - 1
     if ($resIdx -ge 0 -and $resIdx -lt $allRes.Count) {
         $ResolutionId = [string]$allRes[$resIdx].id
-        Write-Host "Selected: $($allRes[$resIdx].name) (resolution_id=$ResolutionId)"
+        Write-Host "Selected: $($allRes[$resIdx].name) (resolution_id=$ResolutionId)" -ForegroundColor Green
     } else {
-        Write-Host "Invalid choice, using default: $($allRes[$defaultIdx].name)"
+        Write-Host "Invalid choice, using default: $($allRes[$defaultIdx].name)" -ForegroundColor Yellow
     }
     Write-Host ""
 
     # Personal release picker (default from config)
     $cfgPersonal = $config.personal
     $pChoice = Read-Host "Personal (0/1) [$cfgPersonal]"
+    if ($pChoice -eq 'c') { Write-Host "Cancelled." -ForegroundColor Yellow; exit 2 }
     if ($pChoice -match '^[01]$') { $Personal = $pChoice } else { $Personal = $cfgPersonal }
-    Write-Host "  personal=$Personal"
+    Write-Host "  personal=$Personal" -ForegroundColor Green
 
     # Anonymous upload picker (default from config)
     $cfgAnonymous = $config.anonymous
     $aChoice = Read-Host "Anonymous (0/1) [$cfgAnonymous]"
+    if ($aChoice -eq 'c') { Write-Host "Cancelled." -ForegroundColor Yellow; exit 2 }
     if ($aChoice -match '^[01]$') { $Anonymous = $aChoice } else { $Anonymous = $cfgAnonymous }
-    Write-Host "  anonymous=$Anonymous"
+    Write-Host "  anonymous=$Anonymous" -ForegroundColor Green
     Write-Host ""
 
     # Confirm season/episode for TV uploads
     if ($catType -eq 'tv') {
-        Write-Host "Season/Episode:"
+        Write-Host "Season/Episode:" -ForegroundColor Cyan
         $inputSeason = Read-Host "  Season number [$SeasonNumber]"
+        if ($inputSeason -eq 'c') { Write-Host "Cancelled." -ForegroundColor Yellow; exit 2 }
         if ($inputSeason -match '^\d+$') { $SeasonNumber = $inputSeason }
         $inputEpisode = Read-Host "  Episode number [$EpisodeNumber]"
+        if ($inputEpisode -eq 'c') { Write-Host "Cancelled." -ForegroundColor Yellow; exit 2 }
         if ($inputEpisode -match '^\d+$') { $EpisodeNumber = $inputEpisode }
-        Write-Host "  -> season=$SeasonNumber, episode=$EpisodeNumber"
+        Write-Host "  -> season=$SeasonNumber, episode=$EpisodeNumber" -ForegroundColor Green
     }
     Write-Host ""
 } else {
@@ -228,31 +252,37 @@ if (-not $auto.IsPresent) {
 
 Write-Host "Upload name: $UploadName"
 
-# Extract MediaInfo from video file (optional)
+# Extract MediaInfo: prefer pre-processed file from parse.ps1, fall back to running MediaInfo.exe
 $Mediainfo = ''
-$MediaInfoExe = Join-Path $PSScriptRoot "tools\MediaInfo.exe"
-if (Test-Path -LiteralPath $MediaInfoExe) {
-    if ($singleFile) {
-        $videoFile = Get-Item -LiteralPath $singleFile
-    } else {
-        $videoExts = @('.mkv', '.mp4', '.avi', '.ts')
-        $videoFile = Get-ChildItem -LiteralPath $directory -Recurse -File |
-            Where-Object { ($videoExts -contains $_.Extension.ToLower()) -and ($_.FullName -notmatch 'sample|trailer|featurette') } |
-            Sort-Object Name |
-            Select-Object -First 1
-    }
-    if ($videoFile) {
-        Write-Host "Running mediainfo on: $($videoFile.Name)"
-        $psi = New-Object System.Diagnostics.ProcessStartInfo
-        $psi.FileName = (Resolve-Path $MediaInfoExe).Path
-        $psi.Arguments = "`"$($videoFile.FullName)`""
-        $psi.RedirectStandardOutput = $true
-        $psi.UseShellExecute = $false
-        $psi.StandardOutputEncoding = [System.Text.Encoding]::UTF8
-        $proc = [System.Diagnostics.Process]::Start($psi)
-        $miRaw = $proc.StandardOutput.ReadToEnd()
-        $proc.WaitForExit()
-        $Mediainfo = ($miRaw -split "`n" | Where-Object { $_ -notmatch '^Encoding settings' }) -join "`n"
+$MediainfoFile = Join-Path $OutDir "${TorrentName}_mediainfo.txt"
+if (Test-Path -LiteralPath $MediainfoFile) {
+    $Mediainfo = ([System.IO.File]::ReadAllText($MediainfoFile, [System.Text.Encoding]::UTF8) -split "`n" | Where-Object { $_ -notmatch '^Encoding settings' }) -join "`n"
+    Write-Host "Using pre-processed mediainfo from: $MediainfoFile"
+} else {
+    $MediaInfoExe = Join-Path $PSScriptRoot "tools\MediaInfo.exe"
+    if (Test-Path -LiteralPath $MediaInfoExe) {
+        if ($singleFile) {
+            $videoFile = Get-Item -LiteralPath $singleFile
+        } else {
+            $videoExts = @('.mkv', '.mp4', '.avi', '.ts')
+            $videoFile = Get-ChildItem -LiteralPath $directory -Recurse -File |
+                Where-Object { ($videoExts -contains $_.Extension.ToLower()) -and ($_.FullName -notmatch 'sample|trailer|featurette') } |
+                Sort-Object Name |
+                Select-Object -First 1
+        }
+        if ($videoFile) {
+            Write-Host "Running mediainfo on: $($videoFile.Name)"
+            $psi = New-Object System.Diagnostics.ProcessStartInfo
+            $psi.FileName = (Resolve-Path $MediaInfoExe).Path
+            $psi.Arguments = "`"$($videoFile.FullName)`""
+            $psi.RedirectStandardOutput = $true
+            $psi.UseShellExecute = $false
+            $psi.StandardOutputEncoding = [System.Text.Encoding]::UTF8
+            $proc = [System.Diagnostics.Process]::Start($psi)
+            $miRaw = $proc.StandardOutput.ReadToEnd()
+            $proc.WaitForExit()
+            $Mediainfo = ($miRaw -split "`n" | Where-Object { $_ -notmatch '^Encoding settings' }) -join "`n"
+        }
     }
 }
 

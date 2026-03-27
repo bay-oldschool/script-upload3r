@@ -11,7 +11,7 @@ Runs 8 steps in sequence for a given media directory:
 3. **Screenshots** — captures 3 JPG screenshots at 15%, 50%, and 85% of playback
 4. **TMDB Search** — fetches title, poster/banner URLs, and Bulgarian title
 5. **IMDB Lookup** — fetches IMDB ID, rating, genres, runtime, director, and cast
-6. **AI Description** — generates a rich Bulgarian BBCode description via Gemini AI or Ollama
+6. **AI Description** — generates a rich Bulgarian BBCode description via Gemini or Ollama
 7. **Upload Screenshots** — uploads screenshots to onlyimage.org and saves direct URLs
 8. **Build Description** — assembles the final BBCode torrent description file
 
@@ -27,6 +27,7 @@ torrent-upload/
 ├── output/      # Generated output files
 ├── run.bat      # Interactive menu / cmd wrapper for ps/run.ps1
 ├── upload.bat   # Interactive menu / cmd wrapper for ps/upload.ps1
+├── subtitle.bat # Interactive menu / cmd wrapper for ps/subtitle.ps1
 ├── edit.bat     # Cmd wrapper for ps/edit.ps1
 ├── delete.bat   # Cmd wrapper for ps/delete.ps1
 ├── install.bat  # Cmd wrapper for ps/install.ps1
@@ -53,6 +54,7 @@ Or use the interactive menu — `run.bat` will detect missing components and off
 This will:
 - Download `ffmpeg.exe`, `ffprobe.exe`, and `MediaInfo.exe` to `tools/` (if not already present)
 - Copy `config.example.jsonc` to `config.jsonc` (if not already present)
+- Optionally install **ImageMagick** via winget for sixel image preview in terminal (banner, poster, screenshots rendered inline in BBCode preview)
 
 Then edit `config.jsonc` with your credentials. JSONC supports `//` line comments for documentation:
 
@@ -61,12 +63,16 @@ Then edit `config.jsonc` with your credentials. JSONC supports `//` line comment
   "api_key": "YOUR_TRACKER_API_KEY",
   "announce_url": "https://yourtracker.cc/announce/YOUR_PASSKEY",
   "tracker_url": "https://yourtracker.cc",
-  "category_id": 1,
+  "username": "",
+  "password": "",
+  "name_convention": 1,
   "type_id": 3,
   "resolution_id": 2,
   "tmdb": 0,
   "imdb": 0,
-  "anonymous": 1,
+  "personal": 0,
+  "anonymous": 0,
+  "subtitle_language_id": 15,
   "tmdb_api_key": "YOUR_TMDB_API_KEY",
   "google_api_key": "YOUR_GOOGLE_API_KEY",
   "translate_lang": "bg",
@@ -86,12 +92,15 @@ Then edit `config.jsonc` with your credentials. JSONC supports `//` line comment
 | `api_key` | Your tracker API key — find it in your tracker's account settings under **API** |
 | `announce_url` | Full announce URL with your passkey — find it in your tracker's account **Upload** or **Passkey** page |
 | `tracker_url` | Tracker base URL (e.g. `https://yourtracker.cc`) |
-| `username` | Tracker login username — required for edit/delete scripts |
-| `password` | Tracker login password — required for edit/delete scripts |
+| `username` | Tracker login username — required for edit/delete/subtitle scripts |
+| `password` | Tracker login password — required for edit/delete/subtitle scripts |
+| `name_convention` | `1` = UNIT3D format (spaces, normalized titles), `0` = raw torrent name |
 | `category_id` | Tracker category ID (1 = Movies, etc.) |
 | `type_id` | Tracker type ID (e.g. 3 = Blu-ray) |
 | `resolution_id` | Default resolution ID (auto-detected from directory name or MediaInfo) |
+| `personal` | `1` to mark as personal release, `0` otherwise |
 | `anonymous` | `1` to upload anonymously, `0` to show your username |
+| `subtitle_language_id` | Default language ID for subtitle uploads (e.g. `15` for Bulgarian) |
 | `tmdb_api_key` | [TMDB API key](https://www.themoviedb.org/settings/api) — free account required |
 | `google_api_key` | [Google Cloud API key](https://console.cloud.google.com/apis/credentials) — needed only for TMDB description translation (enable **Cloud Translation API**) |
 | `translate_lang` | Translation language code (e.g. `bg` for Bulgarian) |
@@ -112,8 +121,10 @@ Just run `run.bat` without arguments for the interactive menu:
 - Browse for folder/file or enter path manually
 - Choose content type (Movie / TV Series)
 - Select pipeline steps
+- Upload submenu: upload torrent, upload subtitle, list last 10 uploads
 - Edit/delete torrents by ID
-- Upload to tracker after processing
+- Maintenance: list saved paths, list output, clear paths/output, run install
+- Preview upload files (request, description with BBCode rendering, mediainfo)
 
 ### Full pipeline (CLI)
 
@@ -130,8 +141,9 @@ run.bat [options] <directory> [config.jsonc]
 | `-tv` | Search for TV shows instead of movies |
 | `-dht` | Enable DHT in the torrent (private by default) |
 | `-steps` | Comma-separated list of steps to run |
-| `-query` | Override TMDB/IMDB search query (useful for non-Latin titles) |
-| `-help` | Show help with all options and examples |
+| `-query`, `-q` | Override TMDB/IMDB search query (useful for non-Latin titles) |
+| `-season`, `-sn` | Override season number (e.g. `-season 1`, `-season 0` for all seasons) |
+| `-help`, `-h` | Show help with all options and examples |
 
 **Available steps** (use with `-steps`):
 
@@ -142,7 +154,7 @@ run.bat [options] <directory> [config.jsonc]
 | 3 | `screens` | Take screenshots at 15%, 50%, 85% |
 | 4 | `tmdb` | Search TMDB for metadata and BG title |
 | 5 | `imdb` | Fetch IMDB details (rating, cast, etc.) |
-| 6 | `describe` | Generate AI description via Gemini |
+| 6 | `describe` | Generate AI description via Gemini/Ollama |
 | 7 | `upload` | Upload screenshots to onlyimage.org |
 | 8 | `description` | Build final BBCode torrent description |
 
@@ -181,7 +193,11 @@ upload.bat [-auto] <directory> [config.jsonc]
 
 | Flag | Description |
 |------|-------------|
-| `-auto` | Skip all interactive prompts, use defaults |
+| `-auto`, `-a` | Skip all interactive prompts, use defaults |
+| `-r <file>` | Override upload request file |
+| `-t <file>` | Override torrent file |
+| `-d <file>` | Override description file |
+| `-help`, `-h` | Show help message |
 
 TV mode is auto-detected from the `_upload_request.txt` generated by the pipeline (step 8).
 
@@ -257,6 +273,38 @@ delete.bat [-f] <torrent_id> [config.jsonc]
 
 ---
 
+### Upload subtitle
+
+Upload a subtitle file to an existing torrent. Logs in via web session, fetches the subtitle create form for language options, then uploads.
+
+Requires `username` and `password` in `config.jsonc`.
+
+```powershell
+.\ps\subtitle.ps1 <torrent_id> <subtitle_file> [-l language_id] [-n note] [-a]
+subtitle.bat <torrent_id> <subtitle_file> [-l language_id] [-n note] [-a]
+```
+
+| Flag | Description |
+|------|-------------|
+| `-l <id>` | Language ID (default from config `subtitle_language_id`) |
+| `-n <text>` | Note (required) |
+| `-a` | Upload anonymously |
+
+**Config defaults:**
+- `subtitle_language_id` — default language ID (e.g. `15` for Bulgarian)
+- `anonymous` — default anonymous flag
+
+**Examples:**
+```powershell
+# Interactive (prompts for language, note, anonymous)
+.\ps\subtitle.ps1 3643 "movie.bg.srt"
+
+# Pre-select language and note
+.\ps\subtitle.ps1 3643 "movie.bg.srt" -l 15 -n "Google Translated" -a
+```
+
+---
+
 ### Individual scripts
 
 Each pipeline step can be run standalone. Scripts are in `ps/`.
@@ -266,11 +314,14 @@ Each pipeline step can be run standalone. Scripts are in `ps/`.
 | MediaInfo | `.\ps\parse.ps1 <dir>` |
 | Create torrent | `.\ps\create.ps1 [-dht] <dir> [config]` |
 | Screenshots | `.\ps\screens.ps1 <dir>` |
-| TMDB search | `.\ps\tmdb.ps1 [-tv] [-query query] <dir> [config]` |
-| IMDB lookup | `.\ps\imdb.ps1 [-tv] [-query query] <dir> [config]` |
-| AI description | `.\ps\describe.ps1 [-tv] [-query query] <dir> [config]` |
+| TMDB search | `.\ps\tmdb.ps1 [-tv] [-query query] [-season N] <dir> [config]` |
+| IMDB lookup | `.\ps\imdb.ps1 [-tv] [-query query] [-season N] <dir> [config]` |
+| AI description | `.\ps\describe.ps1 [-tv] [-query query] [-season N] <dir> [config]` |
 | Upload screenshots | `.\ps\screens_upload.ps1 <dir> [config]` |
-| Build description | `.\ps\description.ps1 <dir>` |
+| Build description | `.\ps\description.ps1 [-tv] <dir> [config]` |
+| Upload subtitle | `.\ps\subtitle.ps1 <torrent_id> <file> [-l lang] [-n note] [-a]` |
+| List uploads | `.\ps\list_uploads.ps1 [count] [config]` |
+| Preview BBCode | `.\ps\preview_bbcode.ps1 [-images] <file.bbcode>` |
 
 ---
 
@@ -287,9 +338,10 @@ All files are written to `output/`:
 | `<name>_screen03.jpg` | Screenshot at 85% |
 | `<name>_tmdb.txt` | TMDB search results (top 5 with BG title) |
 | `<name>_imdb.txt` | IMDB details (ID, rating, cast, etc.) |
-| `<name>_description.txt` | AI-generated BBCode description |
+| `<name>_description.bbcode` | AI-generated BBCode description |
 | `<name>_screens.txt` | Direct URLs of uploaded screenshots |
-| `<name>_torrent_description.txt` | Final BBCode description ready for upload |
+| `<name>_torrent_description.bbcode` | Final BBCode description ready for upload |
+| `<name>_upload_request.txt` | Upload form fields (name, category, type, etc.) |
 | `<name>_upload.log` | Upload request & response log |
 
 ## Type Auto-Detection
@@ -300,7 +352,7 @@ The torrent type is automatically detected from the directory/file name:
 |---------|------|
 | `Remux` | Remux (id=2) |
 | `WEB-DL`, `WEBDL` | WEB-DL (id=4) |
-| `WEBRip` | WEBRip (id=5) |
+| `WEBRip`, `WEB` | WEBRip (id=5) |
 | `HDTV` | HDTV (id=6) |
 | `BDMV`, `DISC`, `.iso` | Full Disc (id=1) |
 | *(no match)* | Config default — Encode (id=3) |

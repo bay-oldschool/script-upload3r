@@ -18,7 +18,9 @@ param(
 
     [switch]$tv,
 
-    [string]$query
+    [string]$query,
+
+    [int]$season = -1
 )
 
 $ErrorActionPreference = 'Stop'
@@ -55,7 +57,7 @@ if ($query) {
 } else {
     $yearMatch = [regex]::Match($baseName, '\b(19|20)\d{2}\b')
     $Year = $(if ($yearMatch.Success) { $yearMatch.Value } else { $null })
-    $cleanQuery = $baseName -replace '[._]', ' ' -replace ' - [Ss]\d{2}.*', '' -replace '\b[Ss]\d{2}.*', '' -replace '\b(19|20)\d{2}\b.*', '' -replace ' - WEBDL.*', '' -replace ' - WEB-DL.*', '' -replace '[\s([]+$', ''
+    $cleanQuery = $baseName -replace '[._]', ' ' -replace '(?i)\bSEASON\s+\d+\b', '' -replace ' - [Ss]\d{2}.*', '' -replace '\b[Ss]\d{2}.*', '' -replace '\b(19|20)\d{2}\b.*', '' -replace ' - WEBDL.*', '' -replace ' - WEB-DL.*', '' -replace '[\s([]+$', ''
 }
 
 $mediaType = $(if ($tv.IsPresent) { "tv" } else { "movie" })
@@ -177,8 +179,13 @@ else { # TV
 
     # Detect season number and fetch season-specific details (skip for multi-season packs like S01-S05)
     $SeasonNum = $null
-    $isSeasonPack = $baseName -match '(?i)S\d{2}\s*-\s*S\d{2}'
-    if (-not $isSeasonPack -and $baseName -match '(?i)S(\d{2})') { $SeasonNum = [int]$matches[1] }
+    if ($season -gt 0) {
+        $SeasonNum = $season
+    } elseif ($season -eq -1) {
+        $isSeasonPack = $baseName -match '(?i)S\d{2}\s*-\s*S\d{2}'
+        if (-not $isSeasonPack -and $baseName -match '(?i)S(\d{2})') { $SeasonNum = [int]$matches[1] }
+    }
+    # season=0 means all seasons pack, skip season-specific metadata
     if ($SeasonNum) {
         try {
             $seasonUrl = "https://api.themoviedb.org/3/tv/$tmdbId/season/$SeasonNum`?api_key=$TmdbApiKey"
@@ -268,7 +275,7 @@ if ($SeasonNum) {
     try {
         $seasonVidUrl = "https://api.themoviedb.org/3/tv/$tmdbId/season/$SeasonNum/videos?api_key=$TmdbApiKey"
         $seasonVids = Invoke-RestMethod -Uri $seasonVidUrl
-        $trailers = @($seasonVids.results | Where-Object { $_.site -eq 'YouTube' -and $_.type -match 'Trailer|Teaser' } | Select-Object -First 3)
+        $trailers = @($seasonVids.results | Where-Object { $_.site -eq 'YouTube' -and $_.type -match 'Trailer|Teaser' } | Sort-Object published_at | Select-Object -First 3)
         if ($trailers) { Write-Host "Found $($trailers.Count) season $SeasonNum trailer(s)" }
     } catch {
         Write-Host "Warning: Could not fetch season $SeasonNum videos" -ForegroundColor Yellow

@@ -1,0 +1,9 @@
+{
+  // Status icons for list_uploads display
+  "personal_yes": "👤",
+  "personal_no": "❌",
+  "approved": "✅",
+  "pending": "⏳",
+  "rejected": "❌",
+  "postponed": "⏸️"
+}

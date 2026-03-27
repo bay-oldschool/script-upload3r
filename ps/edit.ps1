@@ -115,7 +115,7 @@ if ($uploadreqfile) {
     Write-Host "Loaded upload request from: $uploadreqfile"
     # Auto-detect companion description file if -d not specified
     if (-not $descfile) {
-        $autoDesc = $uploadreqfile -replace '_upload_request\.txt$', '_torrent_description.txt'
+        $autoDesc = $uploadreqfile -replace '_upload_request\.txt$', '_torrent_description.bbcode'
         if ($autoDesc -ne $uploadreqfile -and (Test-Path -LiteralPath $autoDesc)) {
             $descfile = $autoDesc
             Write-Host "Auto-detected description file: $descfile"
@@ -289,17 +289,19 @@ if ($fetchCode -eq '200') {
 }
 
 Write-Host ""
-Write-Host "Current values:"
-Write-Host "  name:          $curName"
-Write-Host "  category:      $curCategory (id=$curCategoryId)"
-Write-Host "  type:          $curType (id=$curTypeId)"
-Write-Host "  resolution:    $curResolution (id=$curResolutionId)"
-Write-Host "  tmdb_id:       $curTmdb"
-Write-Host "  imdb_id:       $curImdb"
-Write-Host "  season:        $curSeason"
-Write-Host "  episode:       $curEpisode"
-Write-Host "  personal:      $curPersonal"
-Write-Host "  anonymous:     $curAnon"
+Write-Host "Current values:" -ForegroundColor Cyan
+Write-Host "  name:          " -NoNewline; Write-Host "$curName" -ForegroundColor Green
+Write-Host "  category:      " -NoNewline; Write-Host "$curCategory (id=$curCategoryId)" -ForegroundColor Green
+Write-Host "  type:          " -NoNewline; Write-Host "$curType (id=$curTypeId)" -ForegroundColor Green
+Write-Host "  resolution:    " -NoNewline; Write-Host "$curResolution (id=$curResolutionId)" -ForegroundColor Green
+Write-Host "  tmdb_id:       " -NoNewline; Write-Host "$curTmdb" -ForegroundColor Green
+Write-Host "  imdb_id:       " -NoNewline; Write-Host "$curImdb" -ForegroundColor Green
+Write-Host "  season:        " -NoNewline; Write-Host "$curSeason" -ForegroundColor Green
+Write-Host "  episode:       " -NoNewline; Write-Host "$curEpisode" -ForegroundColor Green
+Write-Host "  personal:      " -NoNewline; Write-Host "$curPersonal" -ForegroundColor Green
+Write-Host "  anonymous:     " -NoNewline; Write-Host "$curAnon" -ForegroundColor Green
+Write-Host ""
+Write-Host "  (enter 'c' at any prompt to cancel)" -ForegroundColor DarkGray
 Write-Host ""
 
 # Interactive editing - Name
@@ -311,8 +313,50 @@ if ($namefile) {
     $newName = $upr['name']
     Write-Host "Using name from upload request: $newName"
 } else {
-    $newName = Read-Host "Name [$curName]"
-    if (-not $newName) { $newName = $curName }
+    Write-Host "Name:" -ForegroundColor Cyan
+    Write-Host "  Current: $curName"
+    Write-Host "  Enter new name, 'f' to load from file, or press Enter to keep current"
+    $nameInput = Read-Host "Name"
+    if ($nameInput -eq 'c') { Write-Host "Cancelled." -ForegroundColor Yellow; exit 0 }
+    if ($nameInput -eq 'f') {
+        Add-Type -AssemblyName System.Windows.Forms
+        $dlg = New-Object System.Windows.Forms.OpenFileDialog
+        $dlg.Title = 'Select name file'
+        $dlg.Filter = 'Text files (*.txt)|*.txt|All files (*.*)|*.*'
+        if ($dlg.ShowDialog() -eq 'OK') {
+            $newName = [System.IO.File]::ReadAllText($dlg.FileName, [System.Text.Encoding]::UTF8).Trim()
+            Write-Host "Loaded name from: $($dlg.FileName)" -ForegroundColor Green
+            Write-Host "  -> $newName" -ForegroundColor Green
+        } else {
+            $newName = $curName
+            Write-Host "No file selected, keeping current name." -ForegroundColor Yellow
+        }
+    } elseif ($nameInput) {
+        $newName = $nameInput
+    } else {
+        $newName = $curName
+    }
+}
+
+# Interactive description - offer to load from file if not already set via -d or -u
+if (-not $descfile -and $upr.Count -eq 0) {
+    Write-Host ""
+    Write-Host "Description:" -ForegroundColor Cyan
+    Write-Host "  Press Enter to keep current, or 'f' to load from file"
+    $descInput = Read-Host "Description"
+    if ($descInput -eq 'c') { Write-Host "Cancelled." -ForegroundColor Yellow; exit 0 }
+    if ($descInput -eq 'f') {
+        Add-Type -AssemblyName System.Windows.Forms
+        $dlg = New-Object System.Windows.Forms.OpenFileDialog
+        $dlg.Title = 'Select description file'
+        $dlg.Filter = 'BBCode files (*.bbcode)|*.bbcode|Text files (*.txt)|*.txt|All files (*.*)|*.*'
+        if ($dlg.ShowDialog() -eq 'OK') {
+            $curDesc = [System.IO.File]::ReadAllText($dlg.FileName, $utf8NoBom)
+            Write-Host "Loaded description from: $($dlg.FileName)" -ForegroundColor Green
+        } else {
+            Write-Host "No file selected, keeping current description." -ForegroundColor Yellow
+        }
+    }
 }
 
 # Category picker (with type info)
@@ -327,7 +371,7 @@ if ($upr.ContainsKey('category_id')) {
     Write-Host "Category from upload request: $catName (category_id=$newCategoryId, $catType)"
 } else {
     Write-Host ""
-    Write-Host "Select category:"
+    Write-Host "Select category:" -ForegroundColor Cyan
     $defaultIdx = 0
     for ($i = 0; $i -lt $allCategories.Count; $i++) {
         $marker = ''
@@ -338,17 +382,18 @@ if ($upr.ContainsKey('category_id')) {
         Write-Host "  $($i+1)) $($allCategories[$i].name) (id=$($allCategories[$i].id), $($allCategories[$i].type))${marker}"
     }
     $catChoice = Read-Host "Category [$($defaultIdx + 1)]"
+    if ($catChoice -eq 'c') { Write-Host "Cancelled." -ForegroundColor Yellow; exit 0 }
     if (-not $catChoice) { $catChoice = $defaultIdx + 1 }
     $catIdx = [int]$catChoice - 1
     if ($catIdx -ge 0 -and $catIdx -lt $allCategories.Count) {
         $newCategoryId = [string]$allCategories[$catIdx].id
         $catType = $allCategories[$catIdx].type
-        Write-Host "Selected: $($allCategories[$catIdx].name) (category_id=$newCategoryId, $catType)"
+        Write-Host "Selected: $($allCategories[$catIdx].name) (category_id=$newCategoryId, $catType)" -ForegroundColor Green
     } else {
         $newCategoryId = $curCategoryId
         $catType = ($allCategories | Where-Object { [string]$_.id -eq $curCategoryId }).type
         if (-not $catType) { $catType = 'movie' }
-        Write-Host "Invalid choice, keeping: $curCategory"
+        Write-Host "Invalid choice, keeping: $curCategory" -ForegroundColor Yellow
     }
 }
 
@@ -362,7 +407,7 @@ if ($upr.ContainsKey('type_id')) {
     Write-Host "Type from upload request: $typeName (type_id=$newTypeId)"
 } else {
     Write-Host ""
-    Write-Host "Select type:"
+    Write-Host "Select type:" -ForegroundColor Cyan
     $defaultIdx = 0
     for ($i = 0; $i -lt $allTypes.Count; $i++) {
         $marker = ''
@@ -373,14 +418,15 @@ if ($upr.ContainsKey('type_id')) {
         Write-Host "  $($i+1)) $($allTypes[$i].name) (id=$($allTypes[$i].id))${marker}"
     }
     $typeChoice = Read-Host "Type [$($defaultIdx + 1)]"
+    if ($typeChoice -eq 'c') { Write-Host "Cancelled." -ForegroundColor Yellow; exit 0 }
     if (-not $typeChoice) { $typeChoice = $defaultIdx + 1 }
     $typeIdx = [int]$typeChoice - 1
     if ($typeIdx -ge 0 -and $typeIdx -lt $allTypes.Count) {
         $newTypeId = [string]$allTypes[$typeIdx].id
-        Write-Host "Selected: $($allTypes[$typeIdx].name) (type_id=$newTypeId)"
+        Write-Host "Selected: $($allTypes[$typeIdx].name) (type_id=$newTypeId)" -ForegroundColor Green
     } else {
         $newTypeId = $curTypeId
-        Write-Host "Invalid choice, keeping: $curType"
+        Write-Host "Invalid choice, keeping: $curType" -ForegroundColor Yellow
     }
 }
 
@@ -394,7 +440,7 @@ if ($upr.ContainsKey('resolution_id')) {
     Write-Host "Resolution from upload request: $resName (resolution_id=$newResolutionId)"
 } else {
     Write-Host ""
-    Write-Host "Select resolution:"
+    Write-Host "Select resolution:" -ForegroundColor Cyan
     $defaultIdx = 0
     for ($i = 0; $i -lt $allRes.Count; $i++) {
         $marker = ''
@@ -405,14 +451,15 @@ if ($upr.ContainsKey('resolution_id')) {
         Write-Host "  $($i+1)) $($allRes[$i].name) (id=$($allRes[$i].id))${marker}"
     }
     $resChoice = Read-Host "Resolution [$($defaultIdx + 1)]"
+    if ($resChoice -eq 'c') { Write-Host "Cancelled." -ForegroundColor Yellow; exit 0 }
     if (-not $resChoice) { $resChoice = $defaultIdx + 1 }
     $resIdx = [int]$resChoice - 1
     if ($resIdx -ge 0 -and $resIdx -lt $allRes.Count) {
         $newResolutionId = [string]$allRes[$resIdx].id
-        Write-Host "Selected: $($allRes[$resIdx].name) (resolution_id=$newResolutionId)"
+        Write-Host "Selected: $($allRes[$resIdx].name) (resolution_id=$newResolutionId)" -ForegroundColor Green
     } else {
         $newResolutionId = $curResolutionId
-        Write-Host "Invalid choice, keeping: $curResolution"
+        Write-Host "Invalid choice, keeping: $curResolution" -ForegroundColor Yellow
     }
 }
 
@@ -427,22 +474,35 @@ if ($upr.Count -gt 0) {
 } else {
     Write-Host ""
     $newTmdb = Read-Host "TMDB ID [$curTmdb]"
+    if ($newTmdb -eq 'c') { Write-Host "Cancelled." -ForegroundColor Yellow; exit 0 }
     if (-not $newTmdb) { $newTmdb = $curTmdb }
+    Write-Host "  tmdb=$newTmdb" -ForegroundColor Green
     $newImdb = Read-Host "IMDB ID [$curImdb]"
+    if ($newImdb -eq 'c') { Write-Host "Cancelled." -ForegroundColor Yellow; exit 0 }
     if (-not $newImdb) { $newImdb = $curImdb }
+    Write-Host "  imdb=$newImdb" -ForegroundColor Green
     if ($catType -eq 'tv') {
+        Write-Host ""
+        Write-Host "Season/Episode:" -ForegroundColor Cyan
         $newSeason = Read-Host "Season [$curSeason]"
+        if ($newSeason -eq 'c') { Write-Host "Cancelled." -ForegroundColor Yellow; exit 0 }
         if (-not $newSeason) { $newSeason = $curSeason }
         $newEpisode = Read-Host "Episode [$curEpisode]"
+        if ($newEpisode -eq 'c') { Write-Host "Cancelled." -ForegroundColor Yellow; exit 0 }
         if (-not $newEpisode) { $newEpisode = $curEpisode }
+        Write-Host "  -> season=$newSeason, episode=$newEpisode" -ForegroundColor Green
     } else {
         $newSeason = $curSeason
         $newEpisode = $curEpisode
     }
     $newPersonal = Read-Host "Personal release (0/1) [$curPersonal]"
+    if ($newPersonal -eq 'c') { Write-Host "Cancelled." -ForegroundColor Yellow; exit 0 }
     if (-not $newPersonal) { $newPersonal = $curPersonal }
+    Write-Host "  personal=$newPersonal" -ForegroundColor Green
     $newAnon = Read-Host "Anonymous (0/1) [$curAnon]"
+    if ($newAnon -eq 'c') { Write-Host "Cancelled." -ForegroundColor Yellow; exit 0 }
     if (-not $newAnon) { $newAnon = $curAnon }
+    Write-Host "  anonymous=$newAnon" -ForegroundColor Green
 }
 Write-Host ""
 

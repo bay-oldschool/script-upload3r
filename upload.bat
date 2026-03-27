@@ -33,22 +33,20 @@ echo %BLUE%========================================%RESET%
 echo.
 echo  1) 🕐 Use last path
 echo  2) 📂 Browse for folder (graphical)
-echo  3) ✏  Enter path manually
-echo  4) 💾 Choose from saved paths
-echo  5) 🗑  Clear saved paths
-echo  6) 🚪 Exit
+echo  3) 🎞  Browse for file (graphical)
+echo  4) ✏  Enter path manually
+echo  5) 💾 Choose from saved paths
+echo  6) 🗑  Clear saved paths
+echo  0) 🚪 Exit
 echo.
-set "choice="
-set /p "choice=Select (1-6): "
-
-if "%choice%"=="1" goto use_last
-if "%choice%"=="2" goto browse_folder
-if "%choice%"=="3" goto enter_manual
-if "%choice%"=="4" goto choose_saved
-if "%choice%"=="5" goto clear_saved
-if "%choice%"=="6" goto end
-echo %RED%Invalid choice!%RESET%
-timeout /t 2 > nul
+choice /c 1234560 /n /m "Select (0-6): "
+if errorlevel 7 goto end
+if errorlevel 6 goto clear_saved
+if errorlevel 5 goto choose_saved
+if errorlevel 4 goto enter_manual
+if errorlevel 3 goto browse_file
+if errorlevel 2 goto browse_folder
+if errorlevel 1 goto use_last
 goto menu
 
 :use_last
@@ -74,6 +72,20 @@ for /f "usebackq delims=" %%I in (`powershell -NoProfile -ExecutionPolicy Bypass
 if not "!USER_PATH!"=="" goto save_and_continue
 echo.
 echo %RED%No folder selected!%RESET%
+timeout /t 2 > nul
+goto menu
+
+:browse_file
+echo.
+echo Opening file browser...
+echo.
+
+set "USER_PATH="
+for /f "usebackq delims=" %%I in (`powershell -NoProfile -ExecutionPolicy Bypass -Command "Add-Type -AssemblyName System.Windows.Forms; $f = New-Object System.Windows.Forms.OpenFileDialog; $f.Title = 'Select media file'; $f.Filter = 'Video files (*.mkv;*.mp4;*.avi;*.ts)|*.mkv;*.mp4;*.avi;*.ts|All files (*.*)|*.*'; if ($f.ShowDialog() -eq 'OK') { $f.FileName }"`) do set "USER_PATH=%%I"
+
+if not "!USER_PATH!"=="" goto save_and_continue
+echo.
+echo %RED%No file selected!%RESET%
 timeout /t 2 > nul
 goto menu
 
@@ -171,14 +183,176 @@ echo %BLUE%   UPLOAD OPTIONS%RESET%
 echo %BLUE%========================================%RESET%
 echo.
 for %%F in ("!USER_PATH!") do set "UP_FOLDER=%%~nxF"
-echo  Folder: %CYAN%!UP_FOLDER!%RESET%
+rem Detect if file or folder, and get torrent name
+for /f "usebackq delims=" %%L in (`powershell -NoProfile -Command "if (Test-Path -LiteralPath '!USER_PATH!' -PathType Leaf) { 'File' } else { 'Folder' }"`) do set "PATH_LABEL=%%L"
+for /f "usebackq delims=" %%N in (`powershell -NoProfile -Command "if (Test-Path -LiteralPath '!USER_PATH!' -PathType Leaf) { [System.IO.Path]::GetFileNameWithoutExtension('!USER_PATH!') } else { Split-Path -Leaf '!USER_PATH!' }"`) do set "TORRENT_NAME=%%N"
+echo  !PATH_LABEL!: %CYAN%!UP_FOLDER!%RESET%
 echo  Path:   !USER_PATH!
 echo.
-set "AUTO_CHOICE="
-set /p "AUTO_CHOICE=Use auto mode (skip prompts)? (y/n) [n]: "
 
-if /i "!AUTO_CHOICE!"=="y" set "AUTO_FLAG=-auto" & goto run_upload
-set "AUTO_FLAG="
+set "OUT_DIR=%~dp0output"
+set "REQ_FILE=!OUT_DIR!\!TORRENT_NAME!_upload_request.txt"
+set "TOR_FILE=!OUT_DIR!\!TORRENT_NAME!.torrent"
+set "DESC_FILE=!OUT_DIR!\!TORRENT_NAME!_torrent_description.bbcode"
+
+echo  %CYAN%Upload files:%RESET%
+if exist "!REQ_FILE!" (echo   %GREEN%OK%RESET%  !TORRENT_NAME!_upload_request.txt) else (echo   %RED%--  !TORRENT_NAME!_upload_request.txt%RESET%)
+if exist "!TOR_FILE!" (echo   %GREEN%OK%RESET%  !TORRENT_NAME!.torrent) else (echo   %RED%--  !TORRENT_NAME!.torrent%RESET%)
+if exist "!DESC_FILE!" (echo   %GREEN%OK%RESET%  !TORRENT_NAME!_torrent_description.bbcode) else (echo   %RED%--  !TORRENT_NAME!_torrent_description.bbcode%RESET%)
+echo.
+
+set "MEDIA_FILE=!OUT_DIR!\!TORRENT_NAME!_mediainfo.txt"
+
+echo  %CYAN%Preview:%RESET%
+echo  1) 📋 Preview upload request
+echo  2) 📝 Preview description
+echo  3) ℹ  Preview mediainfo
+echo  0) 🚪 Back
+echo.
+
+:upload_action
+choice /c yn1230 /n /m "Use auto mode (skip prompts)? (y/n/1/2/3/0) [n]: "
+if errorlevel 6 goto menu
+if errorlevel 5 goto upl_preview_media
+if errorlevel 4 goto upl_preview_desc
+if errorlevel 3 goto upl_preview_req
+if errorlevel 2 set "AUTO_FLAG=" & goto show_override
+if errorlevel 1 set "AUTO_FLAG=-auto" & goto run_upload
+
+:show_override
+echo.
+set "OVR_REQ="
+set "OVR_TOR="
+set "OVR_DESC="
+echo  Override upload files?
+echo  1) 📋 Change upload request file
+echo  2) 🧲 Change torrent file
+echo  3) 📝 Change description file
+echo  4) ▶  Continue with current files
+echo.
+:override_loop
+set "OVR_CHOICE="
+set /p "OVR_CHOICE=Select (1-4) [4]: "
+if "!OVR_CHOICE!"=="" goto run_upload
+if "!OVR_CHOICE!"=="4" goto run_upload
+if "!OVR_CHOICE!"=="1" goto ovr_request
+if "!OVR_CHOICE!"=="2" goto ovr_torrent
+if "!OVR_CHOICE!"=="3" goto ovr_desc
+echo %RED%Invalid choice!%RESET%
+goto override_loop
+
+:ovr_request
+echo.
+echo  Select upload request file:
+echo  1) 📂 Browse (graphical)
+echo  2) ✏  Enter path manually
+echo.
+choice /c 12 /n /m "Select (1-2): "
+if errorlevel 2 (
+    set /p "REQ_FILE=Path: "
+    set "REQ_FILE=!REQ_FILE:"=!"
+) else (
+    for /f "usebackq delims=" %%I in (`powershell -NoProfile -ExecutionPolicy Bypass -Command "Add-Type -AssemblyName System.Windows.Forms; $f = New-Object System.Windows.Forms.OpenFileDialog; $f.Title = 'Select upload request file'; $f.InitialDirectory = '!OUT_DIR!'; $f.Filter = 'Text files (*.txt)|*.txt|All files (*.*)|*.*'; if ($f.ShowDialog() -eq 'OK') { $f.FileName }"`) do set "REQ_FILE=%%I"
+)
+set "OVR_REQ=1"
+echo   Updated: %CYAN%!REQ_FILE!%RESET%
+echo.
+goto override_loop
+
+:ovr_torrent
+echo.
+echo  Select torrent file:
+echo  1) 📂 Browse (graphical)
+echo  2) ✏  Enter path manually
+echo.
+choice /c 12 /n /m "Select (1-2): "
+if errorlevel 2 (
+    set /p "TOR_FILE=Path: "
+    set "TOR_FILE=!TOR_FILE:"=!"
+) else (
+    for /f "usebackq delims=" %%I in (`powershell -NoProfile -ExecutionPolicy Bypass -Command "Add-Type -AssemblyName System.Windows.Forms; $f = New-Object System.Windows.Forms.OpenFileDialog; $f.Title = 'Select torrent file'; $f.InitialDirectory = '!OUT_DIR!'; $f.Filter = 'Torrent files (*.torrent)|*.torrent|All files (*.*)|*.*'; if ($f.ShowDialog() -eq 'OK') { $f.FileName }"`) do set "TOR_FILE=%%I"
+)
+set "OVR_TOR=1"
+echo   Updated: %CYAN%!TOR_FILE!%RESET%
+echo.
+goto override_loop
+
+:ovr_desc
+echo.
+echo  Select description file:
+echo  1) 📂 Browse (graphical)
+echo  2) ✏  Enter path manually
+echo.
+choice /c 12 /n /m "Select (1-2): "
+if errorlevel 2 (
+    set /p "DESC_FILE=Path: "
+    set "DESC_FILE=!DESC_FILE:"=!"
+) else (
+    for /f "usebackq delims=" %%I in (`powershell -NoProfile -ExecutionPolicy Bypass -Command "Add-Type -AssemblyName System.Windows.Forms; $f = New-Object System.Windows.Forms.OpenFileDialog; $f.Title = 'Select description file'; $f.InitialDirectory = '!OUT_DIR!'; $f.Filter = 'BBCode files (*.bbcode)|*.bbcode|Text files (*.txt)|*.txt|All files (*.*)|*.*'; if ($f.ShowDialog() -eq 'OK') { $f.FileName }"`) do set "DESC_FILE=%%I"
+)
+set "OVR_DESC=1"
+echo   Updated: %CYAN%!DESC_FILE!%RESET%
+echo.
+goto override_loop
+
+:upl_preview_req
+cls
+if not exist "!REQ_FILE!" (
+    echo %RED%File not found: !REQ_FILE!%RESET%
+) else (
+    echo %CYAN%=== Upload Request ===%RESET%
+    echo.
+    type "!REQ_FILE!"
+)
+echo.
+echo  Press any key to return...
+pause > nul
+rem Flush any extra buffered input
+choice /c yn1230 /n /t 0 /d n > nul 2>&1
+goto ask_auto
+
+:upl_preview_desc
+cls
+if not exist "!DESC_FILE!" (
+    echo %RED%File not found: !DESC_FILE!%RESET%
+    echo.
+    echo  Press any key to return...
+    pause > nul
+    choice /c yn1230 /n /t 0 /d n > nul 2>&1
+    goto ask_auto
+)
+powershell -ExecutionPolicy Bypass -File "%~dp0ps\preview_bbcode.ps1" "!DESC_FILE!"
+if not !errorlevel! equ 2 goto upl_preview_desc_done
+echo.
+echo  1) 🖼  Render with images
+echo  0) 🔙 Back
+choice /c 10 /n /m "Select (0-1): "
+if errorlevel 2 goto upl_preview_desc_done
+cls
+powershell -ExecutionPolicy Bypass -File "%~dp0ps\preview_bbcode.ps1" "!DESC_FILE!" -images
+:upl_preview_desc_done
+echo.
+echo  Press any key to return...
+pause > nul
+rem Flush any extra buffered input
+choice /c yn1230 /n /t 0 /d n > nul 2>&1
+goto ask_auto
+
+:upl_preview_media
+cls
+if not exist "!MEDIA_FILE!" (
+    echo %RED%File not found: !MEDIA_FILE!%RESET%
+) else (
+    echo %CYAN%=== MediaInfo ===%RESET%
+    echo.
+    type "!MEDIA_FILE!"
+)
+echo.
+echo  Press any key to return...
+pause > nul
+rem Flush any extra buffered input
+choice /c yn1230 /n /t 0 /d n > nul 2>&1
+goto ask_auto
 
 :run_upload
 cls
@@ -187,19 +361,27 @@ echo %BLUE%   UPLOADING TO TRACKER%RESET%
 echo %BLUE%========================================%RESET%
 echo.
 
-powershell -ExecutionPolicy Bypass -File "%~dp0ps\upload.ps1" !AUTO_FLAG! "!USER_PATH!"
+set "OVR_ARGS="
+if "!OVR_REQ!"=="1" set "OVR_ARGS=!OVR_ARGS! -r "!REQ_FILE!""
+if "!OVR_TOR!"=="1" set "OVR_ARGS=!OVR_ARGS! -t "!TOR_FILE!""
+if "!OVR_DESC!"=="1" set "OVR_ARGS=!OVR_ARGS! -d "!DESC_FILE!""
+powershell -ExecutionPolicy Bypass -File "%~dp0ps\upload.ps1" !AUTO_FLAG! !OVR_ARGS! "!USER_PATH!"
 set "UP_EXIT=!errorlevel!"
 
 echo.
+if !UP_EXIT! equ 2 goto upload_cancelled
 if not !UP_EXIT! equ 0 goto upload_failed
 echo %GREEN%========================================%RESET%
-echo %GREEN%   ✅ UPLOAD COMPLETED SUCCESSFULLY%RESET%
+echo %GREEN%   UPLOAD COMPLETED SUCCESSFULLY%RESET%
 echo %GREEN%========================================%RESET%
+goto after_upload
+
+:upload_cancelled
 goto after_upload
 
 :upload_failed
 echo %RED%========================================%RESET%
-echo %RED%   ❌ UPLOAD FAILED - code: !UP_EXIT!%RESET%
+echo %RED%   UPLOAD FAILED - code: !UP_EXIT!%RESET%
 echo %RED%========================================%RESET%
 
 :after_upload
@@ -207,16 +389,11 @@ echo.
 echo  1) 🔄 New upload
 echo  2) 🚪 Exit
 echo.
-set "after_choice="
-set /p "after_choice=Select (1-2): "
-if "!after_choice!"=="1" goto menu
-if "!after_choice!"=="2" goto end
-echo %RED%Invalid choice!%RESET%
+choice /c 12 /n /m "Select (1-2): "
+if errorlevel 2 goto end
+if errorlevel 1 goto menu
 goto after_upload
 
 :end
-echo.
-echo %GREEN%Thank you for using UPLOAD3R!%RESET%
-echo.
 chcp %OLDCP% > nul
-exit /b 0
+exit /b 99

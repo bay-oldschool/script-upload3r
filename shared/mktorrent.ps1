@@ -143,6 +143,12 @@ $torrent.Write($k, 0, $k.Length)
 $v = Bencode-String $announceurl
 $torrent.Write($v, 0, $v.Length)
 
+# created by
+$k = Bencode-String "created by"
+$torrent.Write($k, 0, $k.Length)
+$v = Bencode-String "SCRIPT UPLOAD3R"
+$torrent.Write($v, 0, $v.Length)
+
 # info
 $k = Bencode-String "info"
 $torrent.Write($k, 0, $k.Length)

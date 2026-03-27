@@ -1,5 +1,56 @@
 # Changelog
 
+## v4.2.0 — 2026-03-27
+
+### New Features
+- **Sixel image preview** in BBCode preview: renders banner, poster, and screenshots as inline terminal images via ImageMagick (requires Windows Terminal 1.22+)
+  - Banner rendered at full terminal pixel width (auto-detected via Win32 API)
+  - Poster rendered above metadata table (150px)
+  - Screenshots merged side by side with `+append` into a single row
+  - Two-step flow: text-only preview first, then optional "Render with images" if ImageMagick is available
+  - All `[IMG]` link placeholders remain clickable in the text
+- **ImageMagick optional install**: install script now asks whether to install ImageMagick (default: yes) instead of installing automatically
+- **Colored install output**: install script messages color-coded — DarkGray for "already present", Cyan for progress, Green for success
+
+### Improvements
+- **Shared preview logic**: both `run.bat` and `upload.bat` use exit code from `preview_bbcode.ps1` to detect ImageMagick availability (no duplicated detection)
+
+---
+
+## v4.2.0-rc1 — 2026-03-26
+
+### New Features
+- **Subtitle upload script** (`subtitle.ps1` / `subtitle.bat`): upload subtitle files to torrents by ID via web session with language selection, note field, and anonymous toggle
+  - Interactive language picker with config default (`subtitle_language_id`)
+  - Required note field
+  - Anonymous default read from config
+  - Graphical file browser or drag-and-drop path entry
+- **List last uploads** (`list_uploads.ps1`): fetch and display last N uploads by current user from tracker API with table output (ID, name, category, date)
+- **BBCode preview** (`preview_bbcode.ps1`): renders BBCode files with ANSI terminal colors — bold, italic, underline, colored text, URL links, image placeholders, spoiler/quote/code blocks
+- **Upload submenu** in main menu: new option 6 with sub-options for uploading torrents, uploading subtitles, and listing last 10 uploads
+- **Maintenance submenu** in main menu: option 9 with list saved paths, list output folder, clear saved paths, clear output folder, and run install
+- **File preview in upload flow**: preview upload request, description (rendered BBCode), and mediainfo before uploading — available in both `upload.bat` options screen and `run.bat` post-pipeline menu
+- **Upload file override**: when not using auto mode, option to change upload request, torrent, or description files via graphical browser or manual path entry
+- **Upload file status display**: shows OK/missing status for each upload file (request, torrent, description) in the upload options screen
+
+### Improvements
+- **Colors in upload prompts**: category, type, resolution headings in cyan; selected answers in green; invalid choices in yellow
+- **Colors in edit prompts**: current values displayed in green with cyan headings; selected answers in green
+- **Cancel with 'c'**: type `c` at any interactive prompt in upload or edit to cancel and exit cleanly (exit code 2 for upload, 0 for edit)
+- **Cancel suppresses banners**: cancelling upload no longer shows success/failure banners
+- **Config defaults for subtitle upload**: `subtitle_language_id` (default: 15 for Bulgarian) and `anonymous` read from config
+- **Interactive description/name in edit**: option to load name or description from file via graphical browser (`f` at prompt) during interactive edit
+- **Description prompt moved**: description prompt now appears right after name in edit flow
+- **Navigation improvements**: `0` goes back (not exit) in content type, steps, DHT, and confirmation screens
+- **File/folder detection**: uses PowerShell `Test-Path -PathType Leaf` instead of batch extension check — fixes false "File" label on folders with dots in name (e.g. `H.265-GROUP`)
+- **Run.ps1 usage**: updated to say "directory or file" instead of just "directory"
+- **Upload.ps1 help flag**: added `-h` / `-help` parameter
+- **Upload.ps1 override params**: added `-r`, `-t`, `-d` params to override request, torrent, and description files
+
+### Bug Fixes
+- **CRLF in subtitle.bat**: fixed LF-only line endings causing cmd.exe parse failures
+- **Torrent name detection in upload.bat**: fixed folder names with dots (e.g. `DDP.5.1.H.265-GROUP`) being truncated by batch `%%~nF` extension stripping — now uses PowerShell for reliable detection
+
 ## v4.1.0 — 2026-03-22
 
 ### New Features

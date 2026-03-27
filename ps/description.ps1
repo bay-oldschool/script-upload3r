@@ -39,16 +39,16 @@ if (Test-Path -LiteralPath $directory -PathType Leaf) {
 if (-not $configfile) { $configfile = Join-Path $RootDir "config.jsonc" }
 
 $TorrentName = $baseName
-$GeminiFile      = Join-Path $OutDir "${TorrentName}_description.txt"
+$GeminiFile      = Join-Path $OutDir "${TorrentName}_description.bbcode"
 $ImdbFile        = Join-Path $OutDir "${TorrentName}_imdb.txt"
 $TmdbFile        = Join-Path $OutDir "${TorrentName}_tmdb.txt"
 $ScreensFile     = Join-Path $OutDir "${TorrentName}_screens.txt"
-$TorrentDescFile = Join-Path $OutDir "${TorrentName}_torrent_description.txt"
+$TorrentDescFile = Join-Path $OutDir "${TorrentName}_torrent_description.bbcode"
 $MediainfoFile   = Join-Path $OutDir "${TorrentName}_mediainfo.txt"
 $RequestFile     = Join-Path $OutDir "${TorrentName}_upload_request.txt"
 
 # Build title header from directory name (avoids encoding issues with special chars)
-$EnTitle = $TorrentName -replace '[._]', ' ' -replace ' - [Ss]\d{2}.*', '' -replace '\b[Ss]\d{2}.*', '' -replace '\b(19|20)\d{2}\b.*', '' -replace ' - WEBDL.*', '' -replace ' - WEB-DL.*', '' -replace '[\s([]+$', ''
+$EnTitle = $TorrentName -replace '[._]', ' ' -replace '(?i)\bSEASON\s+\d+\b', '' -replace ' - [Ss]\d{2}.*', '' -replace '\b[Ss]\d{2}.*', '' -replace '\b(19|20)\d{2}\b.*', '' -replace ' - WEBDL.*', '' -replace ' - WEB-DL.*', '' -replace '[\s([]+$', ''
 $yearMatch = [regex]::Match($TorrentName, '\b(19|20)\d{2}\b')
 $Year = if ($yearMatch.Success) { $yearMatch.Value } else { $null }
 
@@ -151,7 +151,7 @@ if (Test-Path -LiteralPath $TmdbFile) {
     }
 }
 
-$enHeader = if ($TmdbEnTitle) { $TmdbEnTitle } else { $EnTitle }
+$enHeader = if ($TmdbEnTitle -and $TmdbEnTitle -notmatch '[\p{IsCyrillic}]') { $TmdbEnTitle } else { $EnTitle }
 if ($BgTitle -and $BgTitle -ne $enHeader) {
     $Header = "[size=26][b]${enHeader} (${Year}) / ${BgTitle} (${Year})[/b][/size]"
 } else {
@@ -350,6 +350,10 @@ if ($imdbTrailers.Count -gt 0) {
     }
 }
 
+# Build BBCode image tags, wrapping in [url] if TMDB page URL is available
+$bannerBBCode = if ($BannerUrl) { "[url=${BannerUrl}][img=1920]${BannerUrl}[/img][/url]" } else { '' }
+$posterBBCode = if ($PosterUrl) { "[url=${PosterUrl}][img=250]${PosterUrl}[/img][/url]" } else { '' }
+
 # Wrap metadata block in a table with poster (poster in left column, metadata in right)
 if ($PosterUrl) {
     $descLines = $Description -split "`n"
@@ -422,21 +426,21 @@ if ($PosterUrl) {
                 $fileListSpoiler = "`n`n[spoiler=Torrent files]`n${summary}`n`n${fileTable}`n[/spoiler]"
             }
         }
-        $Description = "[table]`n[tr]`n[td][img=250]${PosterUrl}[/img][/td]`n[td]`n${Header}`n`n${metaBlock}${fileListSpoiler}`n[/td]`n[/tr]`n[/table]"
+        $Description = "[table]`n[tr]`n[td]${posterBBCode}[/td]`n[td]`n${Header}`n`n${metaBlock}${fileListSpoiler}`n[/td]`n[/tr]`n[/table]"
         if ($contentBlock) { $Description += "`n`n`n${contentBlock}" }
         # Banner goes above the table, header is already inside it
-        if ($BannerUrl) { $Description = "[center][img=1920]${BannerUrl}[/img][/center]`n`n${Description}" }
+        if ($BannerUrl) { $Description = "[center]${bannerBBCode}[/center]`n`n${Description}" }
     } else {
         # Poster available but no metadata found — fall back to normal layout
         $Preamble = ''
-        if ($BannerUrl) { $Preamble = "[center][img=1920]${BannerUrl}[/img][/center]`n`n" }
+        if ($BannerUrl) { $Preamble = "[center]${bannerBBCode}[/center]`n`n" }
         $Preamble += "${Header}`n`n"
         $Description = "${Preamble}${Description}"
     }
 } else {
     # No poster — prepend banner and header normally
     $Preamble = ''
-    if ($BannerUrl) { $Preamble = "[center][img=1920]${BannerUrl}[/img][/center]`n`n" }
+    if ($BannerUrl) { $Preamble = "[center]${bannerBBCode}[/center]`n`n" }
     $Preamble += "${Header}`n`n"
     $Description = "${Preamble}${Description}"
 }
@@ -477,10 +481,17 @@ if (Test-Path -LiteralPath $configfile) {
     $cfgForTracker = (Get-Content -LiteralPath $configfile | Where-Object { $_ -notmatch '^\s*//' }) -join "`n" | ConvertFrom-Json
     $TrackerUrl = $cfgForTracker.tracker_url
     if ($TrackerUrl) {
+        # Build set of ranges covered by existing [url=...]...[/url] tags
+        $urlRx = [regex]'\[url=[^\]]*\].*?\[/url\]'
+        $urlRanges = @($urlRx.Matches($Description) | ForEach-Object { @{ Start = $_.Index; End = $_.Index + $_.Length } })
         $rx = [regex]'(?<![=\w])#([\w][\w.\-]*[\w]|[\w]+)'
         $tagMatches = $rx.Matches($Description)
         for ($i = $tagMatches.Count - 1; $i -ge 0; $i--) {
             $m = $tagMatches[$i]
+            # Skip matches inside existing [url] BBCode tags
+            $insideUrl = $false
+            foreach ($r in $urlRanges) { if ($m.Index -ge $r.Start -and $m.Index -lt $r.End) { $insideUrl = $true; break } }
+            if ($insideUrl) { continue }
             $tag = $m.Groups[1].Value
             $encoded = [Uri]::EscapeDataString($tag)
             $link = "[url=${TrackerUrl}/torrents?description=${encoded}]#${tag}[/url]"
@@ -603,6 +614,7 @@ $typeDetected = $false
 if     ($n -match 'remux')              { $TypeId = 2; $typeDetected = $true }
 elseif ($n -match 'web-dl|webdl')       { $TypeId = 4; $typeDetected = $true }
 elseif ($n -match 'webrip|web\.rip')    { $TypeId = 5; $typeDetected = $true }
+elseif ($n -match '\bweb\b')            { $TypeId = 5; $typeDetected = $true }
 elseif ($n -match 'hdtv')              { $TypeId = 6; $typeDetected = $true }
 elseif ($n -match 'bdmv|disc|\.iso')   { $TypeId = 1; $typeDetected = $true }
 if ($typeDetected) { Write-Host "Detected type: type_id=$TypeId" }
@@ -622,10 +634,103 @@ if (Test-Path -LiteralPath $ImdbFile) {
     if ($imdbLine) { $Imdb = ($imdbLine -replace '^IMDB ID:\s*tt', '').Trim() }
 }
 
-# Build upload name: append BG title if available
-$UploadName = $TorrentName
-if ($BgTitle) {
-    $UploadName = "$TorrentName / $BgTitle ($Year)"
+# Build upload name: UNIT3D convention or raw torrent name based on config
+$cfgForName = (Get-Content -LiteralPath $configfile | Where-Object { $_ -notmatch '^\s*//' }) -join "`n" | ConvertFrom-Json
+$nameConvention = if ($cfgForName.PSObject.Properties['name_convention']) { $cfgForName.name_convention } else { 1 }
+
+if ($nameConvention -eq 1) {
+    # UNIT3D format: "Title Year Edition Resolution Source Codec Audio-Group"
+    # Preserve channel notation (e.g. DDP5.1, 7.1, 5.1) and codec versions (H.264, H.265) before replacing dots
+    $placeholder = [string][char]0x00B7
+    $n_up = $TorrentName -replace '(\d)\.(1|2|264|265)\b', "`$1${placeholder}`$2"
+    $n_up = $n_up -replace '[._]', ' '
+    $n_up = $n_up -replace [char]0x00B7, '.'
+    # Extract technical part: everything after year (or season tag for TV)
+    $techPart = ''
+    if ($n_up -match '(?i)\b(19|20)\d{2}\b[)\]]?\s*(.+)$') {
+        $techPart = $matches[2].Trim()
+    } elseif ($n_up -match '(?i)\b[Ss]\d{2}(?:\s*-\s*[Ss]\d{2}|[Ee]\d+)?\s+(.+)$') {
+        $techPart = $matches[1].Trim()
+    }
+    # Strip brackets/parentheses attached to text (scene tags like -iKA[EtHD]) — remove entirely
+    $techPart = $techPart -replace '(?<=\w)\[([^\]]+)\]', ''
+    $techPart = $techPart -replace '(?<=\w)\(([^)]+)\)', ''
+    # Normalize malformed bracket/paren mixing: )[  ](  ){  }( etc. → space
+    $techPart = $techPart -replace '[)\]}]\s*[(\[{]', ' '
+    # Strip stray braces
+    $techPart = $techPart -replace '[{}]', ''
+    # Strip standalone brackets/parentheses: [1080p] -> 1080p, (1080p ...) -> 1080p ...
+    $techPart = $techPart -replace '\[([^\]]+)\]', '$1'
+    $techPart = $techPart -replace '\(([^)]+)\)', '$1'
+    # Strip remaining unmatched brackets/parens
+    $techPart = $techPart -replace '[()\[\]]', ''
+    # Remove redundant "Season N" text (already covered by S## tag)
+    $techPart = $techPart -replace '(?i)\bSeason\s+\d+\b', ''
+    # Normalize common source names (before group detection to avoid double-hyphen issues)
+    $techPart = $techPart -replace '(?i)\bBluRay\b', 'Blu-ray'
+    $techPart = $techPart -replace '(?i)\bBRRip\b', 'BRRip'
+    $techPart = $techPart -replace '(?i)\bWEB[-\s]?DL\b', 'WEB-DL'
+    $techPart = $techPart -replace '(?i)\bWEBRip\b', 'WEBRip'
+    $techPart = $techPart -replace '(?i)\bHDTV\b', 'HDTV'
+    # Normalize audio codecs
+    $techPart = $techPart -replace '(?i)\bDDP\b', 'DDP'
+    $techPart = $techPart -replace '(?i)\bDD\b', 'DD'
+    $techPart = $techPart -replace '(?i)\bAAC\b', 'AAC'
+    $techPart = $techPart -replace '(?i)\bEAC3\b', 'EAC3'
+    $techPart = $techPart -replace '(?i)\bAC3\b', 'AC3'
+    $techPart = $techPart -replace '(?i)\bDTS\b', 'DTS'
+    $techPart = $techPart -replace '(?i)\bFLAC\b', 'FLAC'
+    # Fix resolution with spaces: "1080 p" -> "1080p", "720 P" -> "720p"
+    $techPart = $techPart -replace '(?i)\b(480|720|1080|2160)\s+p\b', '$1p'
+    # Fix channel notation with spaces: "5 1" -> "5.1", "7 1" -> "7.1"
+    $techPart = $techPart -replace '(\d) (\d)\b', '$1.$2'
+    # Fix codec notation with spaces: "H 264" -> "H264", "H 265" -> "H265"
+    $techPart = $techPart -replace '(?i)\bH\s+(264|265)\b', 'H$1'
+    # Fix bit depth: "10 bit" -> "10bit", "8 bit" -> "8bit"
+    $techPart = $techPart -replace '(?i)\b(\d+)\s+bit\b', '$1bit'
+    # Convert last word to release group if no hyphen-group present
+    if ($techPart -notmatch '-\S+$') {
+        # Multi-word groups like YTS MX
+        $techPart = $techPart -replace '\s+(YTS\s+\w+)\s*$', '-$1'
+        $techPart = $techPart -replace '(?<=-YTS)\s+', '.'
+        # Single-word group: last token becomes -GROUP (skip known codecs/formats)
+        if ($techPart -notmatch '-\S+$' -and $techPart -match '\s+(\S+)\s*$') {
+            $lastToken = $matches[1]
+            $knownTags = 'x264|x265|H264|H265|H\.264|H\.265|HEVC|AVC|AAC|AC3|EAC3|DTS|FLAC|HDTV|WEBRip|WEB-DL|Blu-ray|BDRip|BRRip|DDP5\.1|DDP2\.0|10bit|8bit|HDR|DV|MULTI|REMASTERED|PROPER|REMUX|720p|1080p|2160p|480p'
+            if ($lastToken -notmatch "^(?i)($knownTags)$") {
+                $techPart = $techPart -replace '\s+(\S+)\s*$', '-$1'
+            }
+        }
+    }
+    $techPart = ($techPart -replace '\s+', ' ').Trim()
+    # Build title part — strip colons from TMDB title (not used in torrent naming)
+    # If TMDB title contains non-Latin chars (e.g. Cyrillic), use Latin name from filename instead
+    if ($TmdbEnTitle -and $TmdbEnTitle -notmatch '[\p{IsCyrillic}]') {
+        $titlePart = $TmdbEnTitle -replace ':\s*', ' - ' -replace '/', '-'
+    } else {
+        $titlePart = $EnTitle -replace ':\s*', ' - ' -replace '/', '-'
+    }
+    # Extract season/episode tag for TV
+    $seasonTag = ''
+    if ($TorrentName -match '(?i)(S\d{2}(?:\s*-\s*S\d{2}|E\d{2})?)') {
+        $seasonTag = $matches[1].ToUpper()
+        # Remove season tag from techPart to avoid duplication
+        $techPart = ($techPart -replace '(?i)\bS\d{2}(?:\s*-\s*S\d{2}|E\d{2})?\b', '').Trim()
+        # Clean up orphaned leading hyphen left after season tag removal (e.g. "-S01 tech" → "- tech")
+        $techPart = $techPart -replace '^-\s*', ''
+    }
+    # Assemble: Title Year [Season] TechPart
+    $nameParts = @($titlePart)
+    if ($Year -and $Year -ne '????') { $nameParts += $Year }
+    if ($seasonTag) { $nameParts += $seasonTag }
+    if ($techPart) { $nameParts += $techPart }
+    $UploadName = ($nameParts -join ' ') -replace '\s+', ' ' -replace '--+', '-'
+} else {
+    # Raw torrent name (no formatting)
+    $UploadName = $TorrentName -replace '--+', '-'
+}
+if ($BgTitle -and $BgTitle -ne $EnTitle -and $BgTitle -ne $TmdbEnTitle) {
+    $UploadName = "$UploadName / $BgTitle ($Year)"
 }
 
 # Detect Bulgarian audio/subtitles from MediaInfo sections

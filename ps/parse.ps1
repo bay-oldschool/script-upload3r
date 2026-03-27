@@ -62,4 +62,36 @@ $proc.WaitForExit()
 $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
 [System.IO.File]::WriteAllText($OutputFile, $miOutput, $utf8NoBom)
 
+# Add "Language: English" to audio tracks that have no Language field
+$miLines = [System.IO.File]::ReadAllLines($OutputFile, [System.Text.Encoding]::UTF8)
+$result = New-Object System.Collections.Generic.List[string]
+$inAudio = $false
+$hasLanguage = $false
+$audioBlockStart = -1
+for ($i = 0; $i -lt $miLines.Count; $i++) {
+    $line = $miLines[$i]
+    # Detect section headers (lines like "Audio", "Audio #2", "Video", "Text", etc.)
+    # In MediaInfo output the blank line comes BEFORE the header, not after
+    if ($line -match '^(Audio|Video|Text|Menu|General)\b' -and $i -gt 0 -and $miLines[$i - 1] -eq '') {
+        # Before starting new section, patch previous audio block if needed
+        if ($inAudio -and -not $hasLanguage) {
+            # Insert "Language: English" before the blank line that ends the audio block
+            $insertAt = $result.Count - 1
+            while ($insertAt -ge 0 -and $result[$insertAt] -eq '') { $insertAt-- }
+            $result.Insert($insertAt + 1, 'Language                                 : English')
+        }
+        $inAudio = $line -match '^Audio'
+        $hasLanguage = $false
+    }
+    if ($inAudio -and $line -match '^Language\s+:') { $hasLanguage = $true }
+    $result.Add($line)
+}
+# Patch last audio block if it was the final section
+if ($inAudio -and -not $hasLanguage) {
+    $insertAt = $result.Count - 1
+    while ($insertAt -ge 0 -and $result[$insertAt] -eq '') { $insertAt-- }
+    $result.Insert($insertAt + 1, 'Language                                 : English')
+}
+[System.IO.File]::WriteAllLines($OutputFile, $result.ToArray(), $utf8NoBom)
+
 Write-Host "Saved to: $OutputFile" -ForegroundColor Green

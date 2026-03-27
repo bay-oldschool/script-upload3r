@@ -8,6 +8,8 @@
   "password": "",
 
   // Upload defaults
+  // Name convention: 1 = UNIT3D format (spaces, normalized), 0 = raw torrent name
+  "name_convention": 1,
   "type_id": 3,
   "resolution_id": 2,
   "tmdb": 0,
@@ -15,6 +17,8 @@
   "personal": 0,
   "anonymous": 0,
   "description": "",
+  // Subtitle upload defaults (language ID 15 = Bulgarian)
+  "subtitle_language_id": 15,
 
   // TMDB + Google Translate
   "tmdb_api_key": "YOUR_TMDB_API_KEY",

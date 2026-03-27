@@ -12,7 +12,7 @@
 [*][b]Screenshots[/b] — прави 3 JPG снимки на 15%, 50% и 85% от видеото
 [*][b]TMDB Search[/b] — взима заглавие, постер/банер URL-и и българско заглавие
 [*][b]IMDB Lookup[/b] — взима IMDB ID, рейтинг, жанрове, runtime, режисьор и актьори
-[*][b]AI описание[/b] — генерира богато BBCode описание на български чрез Gemini AI или Ollama
+[*][b]AI описание[/b] — генерира богато BBCode описание на български чрез Gemini или Ollama
 [*][b]Upload Screenshots[/b] — качва скрийншотите в onlyimage.org и записва URL-ите
 [*][b]Build Description[/b] — сглобява финалния BBCode файл за качване
 [/list]
@@ -29,6 +29,7 @@ torrent-upload/
 ├── output/      # Генерирани файлове
 ├── run.bat      # Интерактивно меню / Cmd обвивка за ps/run.ps1
 ├── upload.bat   # Интерактивно меню / Cmd обвивка за ps/upload.ps1
+├── subtitle.bat # Интерактивно меню / Cmd обвивка за ps/subtitle.ps1
 ├── edit.bat     # Cmd обвивка за ps/edit.ps1
 ├── delete.bat   # Cmd обвивка за ps/delete.ps1
 ├── install.bat  # Cmd обвивка за ps/install.ps1
@@ -58,6 +59,7 @@ install.bat
 [list]
 [*]Свали [b]ffmpeg.exe[/b], [b]ffprobe.exe[/b] и [b]MediaInfo.exe[/b] в [b]tools/[/b] (ако липсват)
 [*]Копира [b]config.example.jsonc[/b] в [b]config.jsonc[/b] (ако липсва)
+[*]По избор инсталира [b]ImageMagick[/b] за визуализиране на изображения в терминала (банер, постер, скрийншоти в BBCode превюто)
 [/list]
 
 След това редактирай [b]config.jsonc[/b] с твоите данни (JSONC поддържа // коментари):
@@ -67,12 +69,16 @@ install.bat
   "api_key": "YOUR_TRACKER_API_KEY",
   "announce_url": "https://yourtracker.cc/announce/YOUR_PASSKEY",
   "tracker_url": "https://yourtracker.cc",
-  "category_id": 1,
+  "username": "",
+  "password": "",
+  "name_convention": 1,
   "type_id": 3,
   "resolution_id": 2,
   "tmdb": 0,
   "imdb": 0,
-  "anonymous": 1,
+  "personal": 0,
+  "anonymous": 0,
+  "subtitle_language_id": 15,
   "tmdb_api_key": "YOUR_TMDB_API_KEY",
   "google_api_key": "YOUR_GOOGLE_API_KEY",
   "translate_lang": "bg",
@@ -92,8 +98,11 @@ install.bat
 [list]
 [*][b]api_key[/b] — API ключ от акаунта ти в тракера (Settings → API)
 [*][b]announce_url[/b] — пълен announce URL с твоя passkey (от акаунта в тракера)
-[*][b]username[/b] — потребителско име за тракера (необходимо за edit/delete скриптовете)
-[*][b]password[/b] — парола за тракера (необходимо за edit/delete скриптовете)
+[*][b]username[/b] — потребителско име за тракера (необходимо за edit/delete/subtitle скриптовете)
+[*][b]password[/b] — парола за тракера (необходимо за edit/delete/subtitle скриптовете)
+[*][b]name_convention[/b] — 1 = UNIT3D формат (интервали, нормализирани заглавия), 0 = оригинално име на торента
+[*][b]personal[/b] — 1 за персонален рилийз, 0 иначе
+[*][b]subtitle_language_id[/b] — ID на език по подразбиране за качване на субтитри (напр. 15 за български)
 [*][b]tmdb_api_key[/b] — [url=https://www.themoviedb.org/settings/api]TMDB API key[/url] (безплатен акаунт)
 [*][b]google_api_key[/b] — [url=https://console.cloud.google.com/apis/credentials]Google Cloud API key[/url] (за превод на описания — активирай Cloud Translation API)
 [*][b]gemini_api_key[/b] — [url=https://aistudio.google.com/app/apikey]Google Gemini API key[/url] (безплатен чрез Google AI Studio)
@@ -109,7 +118,7 @@ install.bat
 
 [b]Интерактивно меню:[/b]
 
-Просто стартирай [b]run.bat[/b] без аргументи за интерактивното меню — избор на папка/файл, тип съдържание, стъпки, редактиране/изтриване на торенти, качване в тракера.
+Просто стартирай [b]run.bat[/b] без аргументи за интерактивното меню — избор на папка/файл, тип съдържание, стъпки, качване (торент или субтитри), редактиране/изтриване на торенти, преглед на файлове, поддръжка.
 
 [b]Пълен pipeline (CLI):[/b]
 
@@ -142,8 +151,9 @@ run.bat -steps 1,2,3 "D:\media\Pacific.Rim.2013.1080p.BluRay"
 [*][b]-tv[/b] — търси ТВ серии вместо филми
 [*][b]-dht[/b] — включва DHT в торента (по подразбиране е private)
 [*][b]-steps[/b] — списък от стъпки, разделени със запетая
-[*][b]-query[/b] — ръчно задаване на TMDB/IMDB търсене (полезно за нелатински заглавия)
-[*][b]-help[/b] — показва помощна информация
+[*][b]-query / -q[/b] — ръчно задаване на TMDB/IMDB търсене (полезно за нелатински заглавия)
+[*][b]-season / -sn[/b] — ръчно задаване на номер на сезон (напр. -season 1, -season 0 за всички сезони)
+[*][b]-help / -h[/b] — показва помощна информация
 [/list]
 
 [b]Налични стъпки[/b] (за -steps):
@@ -200,6 +210,39 @@ delete.bat -f 2770
 [*][b]-f[/b] — пропуска API заявката и изтрива без потвърждение
 [/list]
 
+[b]Качване на субтитри:[/b]
+
+Качва файл със субтитри към съществуващ торент. Влиза чрез уеб сесия, взима формата за езици и качва субтитрите. Изисква [b]username[/b] и [b]password[/b] в config.jsonc.
+
+[code]
+.\ps\subtitle.ps1 3643 "movie.bg.srt"
+.\ps\subtitle.ps1 3643 "movie.bg.srt" -l 15 -n "Google Translated" -a
+subtitle.bat 3643 "movie.bg.srt"
+[/code]
+
+Опции:
+[list]
+[*][b]-l <id>[/b] — езиков ID (по подразбиране от конфига: subtitle_language_id)
+[*][b]-n <текст>[/b] — бележка (задължително поле)
+[*][b]-a[/b] — качване анонимно
+[/list]
+
+[b]Списък на последните качвания:[/b]
+
+[code]
+.\ps\list_uploads.ps1 10
+[/code]
+
+Показва последните N качвания от текущия потребител с ID, име, категория и дата.
+
+[b]Преглед на BBCode описание:[/b]
+
+[code]
+.\ps\preview_bbcode.ps1 "output/Movie_torrent_description.bbcode"
+[/code]
+
+Рендерира BBCode файл с ANSI цветове в терминала — bold, italic, underline, линкове, spoiler блокове и др. С флаг [b]-images[/b] рендерира банер, постер и скрийншоти като sixel изображения директно в терминала (изисква ImageMagick и Windows Terminal 1.22+).
+
 [b][size=15]Изходни файлове (output/)[/size][/b]
 
 [list]
@@ -208,9 +251,10 @@ delete.bat -f 2770
 [*][b]<name>_screen01/02/03.jpg[/b] — скрийншоти на 15%, 50%, 85%
 [*][b]<name>_tmdb.txt[/b] — TMDB резултати (топ 5 с БГ заглавие)
 [*][b]<name>_imdb.txt[/b] — IMDB детайли (ID, рейтинг, актьори и др.)
-[*][b]<name>_description.txt[/b] — AI-генерирано BBCode описание
+[*][b]<name>_description.bbcode[/b] — AI-генерирано BBCode описание
 [*][b]<name>_screens.txt[/b] — URL-и на качените скрийншоти
-[*][b]<name>_torrent_description.txt[/b] — финалното BBCode описание за качване
+[*][b]<name>_torrent_description.bbcode[/b] — финалното BBCode описание за качване
+[*][b]<name>_upload_request.txt[/b] — полета за качване (име, категория, тип и др.)
 [*][b]<name>_upload.log[/b] — лог на заявката и отговора при качване
 [/list]
 
@@ -221,7 +265,7 @@ delete.bat -f 2770
 [list]
 [*][b]Remux[/b] — Remux (id=2)
 [*][b]WEB-DL / WEBDL[/b] — WEB-DL (id=4)
-[*][b]WEBRip[/b] — WEBRip (id=5)
+[*][b]WEBRip / WEB[/b] — WEBRip (id=5)
 [*][b]HDTV[/b] — HDTV (id=6)
 [*][b]BDMV / DISC / .iso[/b] — Full Disc (id=1)
 [*][b](без съвпадение)[/b] — стойност от конфига — Encode (id=3)

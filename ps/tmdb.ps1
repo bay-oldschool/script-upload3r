@@ -18,7 +18,9 @@ param(
 
     [switch]$tv,
 
-    [string]$query
+    [string]$query,
+
+    [int]$season = -1
 )
 
 $ErrorActionPreference = 'Stop'
@@ -56,7 +58,7 @@ if ($query) {
 } else {
     $yearMatch = [regex]::Match($baseName, '\b(19|20)\d{2}\b')
     $Year = $(if ($yearMatch.Success) { $yearMatch.Value } else { $null })
-    $cleanQuery = $baseName -replace '[._]', ' ' -replace ' - [Ss]\d{2}.*', '' -replace '\b[Ss]\d{2}.*', '' -replace '\b(19|20)\d{2}\b.*', '' -replace ' - WEBDL.*', '' -replace ' - WEB-DL.*', '' -replace '[\s([]+$', ''
+    $cleanQuery = $baseName -replace '[._]', ' ' -replace '(?i)\bSEASON\s+\d+\b', '' -replace ' - [Ss]\d{2}.*', '' -replace '\b[Ss]\d{2}.*', '' -replace '\b(19|20)\d{2}\b.*', '' -replace ' - WEBDL.*', '' -replace ' - WEB-DL.*', '' -replace '[\s([]+$', ''
 }
 
 $mediaType = $(if ($tv.IsPresent) { "tv" } else { "movie" })
@@ -195,8 +197,15 @@ $enTitle = if ($mediaType -eq 'movie') { $bestItem.title } else { $bestItem.name
 try {
     $bgResp = Invoke-RestMethod -Uri "https://api.themoviedb.org/3/$mediaType/$($bestItem.id)?api_key=$TmdbApiKey&language=bg"
     $bgTitle = if ($mediaType -eq 'movie') { $bgResp.title } else { $bgResp.name }
-    if ($bgTitle -and $bgTitle -ne $enTitle) {
+    # If BG translation matches primary title but title is Cyrillic (Bulgarian show),
+    # still write BG Title so description.ps1 can use it after the / separator
+    if (-not $bgTitle) { $bgTitle = '' }
+    if ($bgTitle -eq $enTitle -and $enTitle -match '[\p{IsCyrillic}]') {
+        Write-Host "BG Title: $bgTitle (same as primary)"
+    } elseif ($bgTitle -and $bgTitle -ne $enTitle) {
         Write-Host "BG Title: $bgTitle"
+    }
+    if ($bgTitle) {
         $foundId = $false
         for ($i = 0; $i -lt $outputLines.Count; $i++) {
             if ($outputLines[$i] -match '^\s+TMDB ID:\s+(\d+)' -and $matches[1] -eq "$($bestItem.id)") {
@@ -213,8 +222,13 @@ try {
 # Fetch season-specific metadata for TV shows (skip for multi-season packs like S01-S05)
 $SeasonNum = $null
 if ($mediaType -eq 'tv') {
-    $isSeasonPack = $baseName -match '(?i)S\d{2}\s*-\s*S\d{2}'
-    if (-not $isSeasonPack -and $baseName -match '(?i)S(\d{2})') { $SeasonNum = [int]$matches[1] }
+    if ($season -gt 0) {
+        $SeasonNum = $season
+    } elseif ($season -eq -1) {
+        $isSeasonPack = $baseName -match '(?i)S\d{2}\s*-\s*S\d{2}'
+        if (-not $isSeasonPack -and $baseName -match '(?i)S(\d{2})') { $SeasonNum = [int]$matches[1] }
+    }
+    # season=0 means all seasons pack, skip season-specific metadata
 }
 if ($SeasonNum) {
     Write-Host "Fetching season $SeasonNum metadata for TV show ID $($bestItem.id)"

@@ -38,6 +38,9 @@ param(
     [Alias('q')]
     [string]$query,
 
+    [Alias('sn')]
+    [int]$season = -1,
+
     [Alias('h')]
     [switch]$help
 )
@@ -53,13 +56,14 @@ Usage: .\run.ps1 [options] <directory> [config.jsonc]
 Run pipeline steps for a given media directory.
 
 Arguments:
-  directory    Path to the content directory
+  directory    Path to the content directory or file
   config.jsonc   Path to JSONC config file (default: ./config.jsonc)
 
 Options:
   -tv                Search for TV shows instead of movies
   -dht               Enable DHT for torrent (disabled by default)
   -query QUERY       Override auto-detected title for TMDB/IMDB search
+  -season N          Override season number (e.g. -season 1, -season 0 for all seasons)
   -steps STEPS       Comma-separated list of steps to run (default: all)
   -help              Show this help message
 
@@ -154,6 +158,7 @@ if ($dht.IsPresent) { $createArgs['dht'] = $true }
 $metaArgs = @{ configfile = $configfile }
 if ($tv.IsPresent) { $metaArgs['tv'] = $true }
 if ($query) { $metaArgs['query'] = $query }
+if ($season -ge 0) { $metaArgs['season'] = $season }
 
 $total = $runSteps.Count
 $current = 0
