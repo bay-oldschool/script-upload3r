@@ -37,9 +37,9 @@ $ErrorActionPreference = 'Stop'
 $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
 $PSScriptRoot = Split-Path -Parent -Path (Split-Path -Parent -Path $MyInvocation.MyCommand.Definition)
 
-if (-not $torrent_id -or -not $subtitle_file) {
+if (-not $torrent_id) {
     Write-Host @"
-Usage: subtitle.ps1 <torrent_id> <subtitle_file> [config.jsonc] [-l language_id] [-a]
+Usage: subtitle.ps1 <torrent_id> [subtitle_file] [config.jsonc] [-l language_id] [-a]
 
 Upload a subtitle file to a UNIT3D tracker torrent.
 Logs in via web session, fetches the subtitle create form,
@@ -49,7 +49,7 @@ Requires "username" and "password" in config.jsonc.
 
 Arguments:
   torrent_id       Numeric torrent ID to attach the subtitle to
-  subtitle_file    Path to the subtitle file (.srt, .ass, .sub, .zip, etc)
+  subtitle_file    Path to the subtitle file (optional, will prompt if missing)
   config.jsonc     Path to JSONC config file (default: ./config.jsonc)
 
 Options:
@@ -68,6 +68,22 @@ Example:
 if ($torrent_id -notmatch '^\d+$') {
     Write-Host "Error: torrent_id must be a number" -ForegroundColor Red
     exit 1
+}
+
+# Interactive file picker if subtitle_file not provided
+if (-not $subtitle_file) {
+    Add-Type -AssemblyName System.Windows.Forms
+    $dlg = New-Object System.Windows.Forms.OpenFileDialog
+    $dlg.Title = "Select subtitle file for torrent #${torrent_id}"
+    $dlg.Filter = "Subtitle files (*.srt;*.ass;*.ssa;*.sub;*.sup;*.zip;*.rar)|*.srt;*.ass;*.ssa;*.sub;*.sup;*.zip;*.rar|All files (*.*)|*.*"
+    $dlg.Multiselect = $false
+    if ($dlg.ShowDialog() -eq 'OK') {
+        $subtitle_file = $dlg.FileName
+        Write-Host "Selected: $subtitle_file" -ForegroundColor Green
+    } else {
+        Write-Host "No file selected." -ForegroundColor Yellow
+        exit 0
+    }
 }
 
 if (-not (Test-Path -LiteralPath $subtitle_file)) {
@@ -108,7 +124,7 @@ $headerFile = [System.IO.Path]::GetTempFileName()
 
 try {
     # Step 1: Login
-    Write-Host "Logging in to ${TrackerUrl}..."
+    Write-Host "Logging in to ${TrackerUrl}..." -ForegroundColor Cyan
     $loginPage = (& curl.exe -s -c $cookieJar -b $cookieJar "${TrackerUrl}/login") -join "`n"
 
     $csrfToken = ''
@@ -144,13 +160,13 @@ try {
         Write-Host "Error: login failed. Check username/password in config." -ForegroundColor Red
         exit 1
     }
-    Write-Host "Logged in."
+    Write-Host "Logged in." -ForegroundColor Green
 
     # Follow redirect to finalize session
     & curl.exe -s -o NUL -c $cookieJar -b $cookieJar --max-time 15 $loginLocation
 
     # Step 2: Fetch subtitle create page to get CSRF token and language list
-    Write-Host "Fetching subtitle form for torrent #${torrent_id}..."
+    Write-Host "Fetching subtitle form for torrent #${torrent_id}..." -ForegroundColor Cyan
     $createPage = (& curl.exe -s -c $cookieJar -b $cookieJar --max-time 30 `
         "${TrackerUrl}/subtitles/create?torrent_id=${torrent_id}") -join "`n"
 
@@ -189,28 +205,31 @@ try {
     if (-not $selectedLang) {
         if ($langList.Count -gt 0) {
             Write-Host ""
-            Write-Host "Available languages:"
+            Write-Host "Available languages:" -ForegroundColor Cyan
             for ($i = 0; $i -lt $langList.Count; $i++) {
                 Write-Host "  $($i+1)) $($langList[$i].name) (id=$($langList[$i].id))"
             }
             Write-Host ""
+            Write-Host "  (enter 'c' at any prompt to cancel)" -ForegroundColor DarkGray
             $langChoice = Read-Host "Select language"
+            if ($langChoice -eq 'c') { Write-Host "Cancelled." -ForegroundColor Yellow; exit 0 }
             if ($langChoice -match '^\d+$') {
                 $idx = [int]$langChoice - 1
                 if ($idx -ge 0 -and $idx -lt $langList.Count) {
                     $selectedLang = $langList[$idx].id
-                    Write-Host "Selected: $($langList[$idx].name) (id=$selectedLang)"
+                    Write-Host "Selected: $($langList[$idx].name) (id=$selectedLang)" -ForegroundColor Green
                 }
             }
         }
         if (-not $selectedLang) {
             $selectedLang = Read-Host "Enter language ID manually"
+            if ($selectedLang -eq 'c') { Write-Host "Cancelled." -ForegroundColor Yellow; exit 0 }
         }
     } else {
         # Show language list with default marked, allow override
         if ($langList.Count -gt 0) {
             Write-Host ""
-            Write-Host "Available languages:"
+            Write-Host "Available languages:" -ForegroundColor Cyan
             $defaultIdx = 0
             for ($i = 0; $i -lt $langList.Count; $i++) {
                 $marker = ''
@@ -221,9 +240,11 @@ try {
                 Write-Host "  $($i+1)) $($langList[$i].name) (id=$($langList[$i].id))${marker}"
             }
             Write-Host ""
+            Write-Host "  (enter 'c' at any prompt to cancel)" -ForegroundColor DarkGray
             $defaultName = $langList[$defaultIdx].name
             $defaultId = $langList[$defaultIdx].id
             $langChoice = Read-Host "Select language [$($defaultIdx + 1) - $defaultName (id=$defaultId)]"
+            if ($langChoice -eq 'c') { Write-Host "Cancelled." -ForegroundColor Yellow; exit 0 }
             if ($langChoice -match '^\d+$') {
                 $idx = [int]$langChoice - 1
                 if ($idx -ge 0 -and $idx -lt $langList.Count) {
@@ -233,7 +254,7 @@ try {
         }
         $langMatch = $langList | Where-Object { $_.id -eq $selectedLang }
         if ($langMatch) {
-            Write-Host "Language: $($langMatch.name) (id=$selectedLang)"
+            Write-Host "Language: $($langMatch.name) (id=$selectedLang)" -ForegroundColor Green
         } else {
             Write-Host "Language ID: $selectedLang"
         }
@@ -250,6 +271,7 @@ try {
     } else {
         $defaultAnonLabel = if ($DefaultAnon -eq 1) { 'y' } else { 'n' }
         $anonChoice = Read-Host "Upload anonymously? (y/n) [$defaultAnonLabel]"
+        if ($anonChoice -eq 'c') { Write-Host "Cancelled." -ForegroundColor Yellow; exit 0 }
         if (-not $anonChoice) {
             $anonValue = [string]$DefaultAnon
         } else {
@@ -259,12 +281,10 @@ try {
 
     # Note field (required)
     $noteValue = $note
-    if (-not $noteValue) {
-        $noteValue = Read-Host "Note"
-    }
-    if (-not $noteValue) {
-        Write-Host "Error: note is required" -ForegroundColor Red
-        exit 1
+    while (-not $noteValue) {
+        $noteValue = Read-Host "Note (required)"
+        if ($noteValue -eq 'c') { Write-Host "Cancelled." -ForegroundColor Yellow; exit 0 }
+        if (-not $noteValue) { Write-Host "  Note cannot be empty." -ForegroundColor Yellow }
     }
     $tempNote = [System.IO.Path]::GetTempFileName()
     [System.IO.File]::WriteAllText($tempNote, $noteValue, $utf8NoBom)
@@ -272,8 +292,8 @@ try {
 
     # Step 3: Upload subtitle
     Write-Host ""
-    Write-Host "Uploading subtitle to torrent #${torrent_id}..."
-    Write-Host "  File: $(Split-Path -Leaf $subtitle_file)"
+    Write-Host "Uploading subtitle to torrent #${torrent_id}..." -ForegroundColor Cyan
+    Write-Host "  File: $(Split-Path -Leaf $subtitle_file)" -ForegroundColor Green
     if ($noteValue) { Write-Host "  Note: $noteValue" }
 
     $response = & curl.exe -s -w "`n%{http_code}" --max-time 60 `

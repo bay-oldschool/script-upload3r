@@ -1,21 +1,25 @@
 [b][size=25][url=https://github.com/bay-oldschool/script-upload3r]SCRIPT UPLOAD3R[/url][/size][/b]
 
-Набор от скриптове за подготовка и качване на медия в Unit3D тракери. Работи на Windows чрез [b]PowerShell[/b] / [b]Cmd[/b]. Включва интерактивно меню ([b]run.bat[/b]) или пълна CLI поддръжка.
+Набор от скриптове за подготовка и качване на медия в Unit3D тракери. Работи на Windows чрез [b]PowerShell[/b] / [b]Cmd[/b]. Включва интерактивно меню ([b]run.bat[/b]) или пълна CLI поддръжка. Поддържа [b]филми[/b], [b]сериали[/b], [b]игри[/b] и [b]софтуер[/b].
 
 [b][size=15]Какво прави[/size][/b]
 
-Изпълнява 8 стъпки последователно за даена медийна директория:
+[b]Филми / Сериали (8 стъпки):[/b]
 
 [list]
 [*][b]MediaInfo[/b] — парсва видео файловете и записва форматиран текстов отчет
-[*][b]Torrent файл[/b] — създава private .torrent с announce URL на тракера
-[*][b]Screenshots[/b] — прави 3 JPG снимки на 15%, 50% и 85% от видеото
+[*][b]Torrent файл[/b] — създава private .torrent с автоматичен piece size и прогрес бар
+[*][b]Screenshots[/b] — прави 3 PNG снимки на рандомизирани позиции
 [*][b]TMDB Search[/b] — взима заглавие, постер/банер URL-и и българско заглавие
 [*][b]IMDB Lookup[/b] — взима IMDB ID, рейтинг, жанрове, runtime, режисьор и актьори
-[*][b]AI описание[/b] — генерира богато BBCode описание на български чрез Gemini или Ollama
+[*][b]AI описание[/b] — генерира богато BBCode описание на български чрез 8 AI доставчика
 [*][b]Upload Screenshots[/b] — качва скрийншотите в onlyimage.org и записва URL-ите
 [*][b]Build Description[/b] — сглобява финалния BBCode файл за качване
 [/list]
+
+[b]Игри:[/b] Използва [b]IGDB[/b] (чрез Twitch API) за метаданни, трейлъри и корици, с AI описание специфично за игри.
+
+[b]Софтуер:[/b] AI описание със софтуерен промпт. Ръчна поддръжка на постер.
 
 Всички изходни файлове се записват в директорията [b]output/[/b].
 
@@ -84,12 +88,24 @@ install.bat
   "translate_lang": "bg",
   "ai_provider": "gemini",
   "gemini_api_key": "YOUR_GEMINI_API_KEY",
-  "gemini_model": "gemini-2.5-flash-lite",
+  "gemini_model": "gemini-2.5-flash",
   "ollama_model": "gemma3:4b",
   "ollama_url": "",
+  "groq_api_key": "YOUR_GROQ_API_KEY",
+  "grok_api_key": "YOUR_GROK_API_KEY",
+  "cerebras_api_key": "YOUR_CEREBRAS_API_KEY",
+  "sambanova_api_key": "YOUR_SAMBANOVA_API_KEY",
+  "openrouter_api_key": "YOUR_OPENROUTER_API_KEY",
+  "huggingface_api_key": "YOUR_HUGGINGFACE_API_KEY",
+  "twitch_client_id": "YOUR_TWITCH_CLIENT_ID",
+  "twitch_client_secret": "YOUR_TWITCH_CLIENT_SECRET",
   "omdb_api_key": "YOUR_OMDB_API_KEY",
   "mdblist_api_key": "YOUR_MDBLIST_API_KEY",
-  "onlyimage_api_key": "YOUR_ONLYIMAGE_API_KEY"
+  "onlyimage_api_key": "YOUR_ONLYIMAGE_API_KEY",
+  "show_logo": 1,
+  "logo_source": "image",
+  "logo_display": "direct",
+  "logo_width": 40
 }
 [/code]
 
@@ -106,19 +122,30 @@ install.bat
 [*][b]tmdb_api_key[/b] — [url=https://www.themoviedb.org/settings/api]TMDB API key[/url] (безплатен акаунт)
 [*][b]google_api_key[/b] — [url=https://console.cloud.google.com/apis/credentials]Google Cloud API key[/url] (за превод на описания — активирай Cloud Translation API)
 [*][b]gemini_api_key[/b] — [url=https://aistudio.google.com/app/apikey]Google Gemini API key[/url] (безплатен чрез Google AI Studio)
-[*][b]ai_provider[/b] — принудителен AI доставчик: "gemini" или "ollama" (автоматично, ако е пропуснат)
+[*][b]ai_provider[/b] — AI доставчик: "gemini", "ollama", "groq", "grok", "cerebras", "sambanova", "openrouter" или "huggingface"
 [*][b]ollama_model[/b] — Ollama модел (напр. gemma3:4b) — ако е зададен и няма ai_provider, се използва Ollama
 [*][b]ollama_url[/b] — Ollama API URL (по подразбиране: http://localhost:11434)
+[*][b]groq_api_key[/b] — [url=https://console.groq.com/]Groq API key[/url] (бърз inference)
+[*][b]grok_api_key[/b] — [url=https://x.ai/]Grok API key[/url] (xAI)
+[*][b]cerebras_api_key[/b] — [url=https://cloud.cerebras.ai/]Cerebras API key[/url] (бърз inference)
+[*][b]sambanova_api_key[/b] — [url=https://cloud.sambanova.ai/]SambaNova API key[/url] (бърз inference)
+[*][b]openrouter_api_key[/b] — [url=https://openrouter.ai/]OpenRouter API key[/url] (multi-model router)
+[*][b]huggingface_api_key[/b] — [url=https://huggingface.co/]HuggingFace API key[/url] (inference API)
+[*][b]twitch_client_id[/b] / [b]twitch_client_secret[/b] — [url=https://dev.twitch.tv/console]Twitch credentials[/url] (необходими за IGDB търсене на игри)
 [*][b]mdblist_api_key[/b] — [url=https://mdblist.com/]MDBList API key[/url] (безплатен, за Rotten Tomatoes Critics и Audience оценки)
 [*][b]omdb_api_key[/b] — [url=https://www.omdbapi.com/apikey.aspx]OMDB API key[/url] (безплатен, резервен вариант за RT Critics оценка когато MDBList няма данни)
 [*][b]onlyimage_api_key[/b] — [url=https://onlyimage.org/user/settings/api]onlyimage.org API key[/url] (от настройките на акаунта)
+[*][b]show_logo[/b] — показване на лого в менюто (1/0)
+[*][b]logo_source[/b] — "text" (ASCII с цветове) или "image" (рендериране на logo.png)
+[*][b]logo_display[/b] — режим за image: "ansi", "block", "ascii" или "direct" (Sixel)
+[*][b]logo_width[/b] — ширина на логото в символи
 [/list]
 
 [b][size=15]Употреба[/size][/b]
 
 [b]Интерактивно меню:[/b]
 
-Просто стартирай [b]run.bat[/b] без аргументи за интерактивното меню — избор на папка/файл, тип съдържание, стъпки, качване (торент или субтитри), редактиране/изтриване на торенти, преглед на файлове, поддръжка.
+Просто стартирай [b]run.bat[/b] без аргументи за интерактивното меню — избор на папка/файл, тип съдържание (филм/сериал/игра/софтуер), стъпки, качване (торент или субтитри), редактиране/изтриване на торенти, преглед на файлове, поддръжка. Конфигуруемо ASCII/image лого.
 
 [b]Пълен pipeline (CLI):[/b]
 
@@ -164,7 +191,7 @@ run.bat -steps 1,2,3 "D:\media\Pacific.Rim.2013.1080p.BluRay"
 [*][b]3 / screens[/b] — Скрийншоти на 15%, 50%, 85%
 [*][b]4 / tmdb[/b] — Търсене в TMDB за метаданни и БГ заглавие
 [*][b]5 / imdb[/b] — IMDB детайли (рейтинг, актьори и др.)
-[*][b]6 / describe[/b] — AI описание чрез Gemini
+[*][b]6 / describe[/b] — AI описание (8 доставчика)
 [*][b]7 / upload[/b] — Качване на скрийншоти в onlyimage.org
 [*][b]8 / description[/b] — Сглобяване на финално BBCode описание
 [/list]
@@ -248,7 +275,7 @@ subtitle.bat 3643 "movie.bg.srt"
 [list]
 [*][b]<name>.torrent[/b] — torrent файл
 [*][b]<name>_mediainfo.txt[/b] — MediaInfo отчет
-[*][b]<name>_screen01/02/03.jpg[/b] — скрийншоти на 15%, 50%, 85%
+[*][b]<name>_screen01/02/03.png[/b] — скрийншоти
 [*][b]<name>_tmdb.txt[/b] — TMDB резултати (топ 5 с БГ заглавие)
 [*][b]<name>_imdb.txt[/b] — IMDB детайли (ID, рейтинг, актьори и др.)
 [*][b]<name>_description.bbcode[/b] — AI-генерирано BBCode описание
@@ -295,6 +322,9 @@ subtitle.bat 3643 "movie.bg.srt"
 [*][b]Rotten Tomatoes рейтинги[/b]: показва RT Critics (🍅) и Audience (🍿) оценки в описанието (чрез MDBList API, с OMDB като резервен вариант)
 [*][b]Интерактивен избор[/b]: категория, тип и резолюция с навигация и предварително избрана стойност
 [*][b]Лог файл[/b]: записва пълната заявка и отговор в _upload.log
+[*][b]Игри/Софтуер[/b]: отделни pipeline-и за игри (IGDB метаданни) и софтуер с категории 18-26
+[*][b]Торент прогрес[/b]: цветен ANSI прогрес бар при хеширане, автоматичен piece size
+[*][b]Лого[/b]: конфигуруемо ASCII или image лого в менюто (текст/ANSI/Sixel)
 [/list]
 
 [b][size=15]Скрийншоти[/size][/b]

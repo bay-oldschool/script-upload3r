@@ -41,29 +41,78 @@ if (-not $configfile) { $configfile = Join-Path "$PSScriptRoot/.." "config.jsonc
 
 $config = (Get-Content -LiteralPath $configfile | Where-Object { $_ -notmatch '^\s*//' }) -join "`n" | ConvertFrom-Json
 $TmdbApiKey   = $config.tmdb_api_key
+$OmdbApiKey   = $config.omdb_api_key
 $GeminiApiKey = $config.gemini_api_key
 $GeminiModel  = if ($config.gemini_model) { $config.gemini_model } else { "gemini-2.5-flash-lite" }
 $OllamaModel  = $config.ollama_model
 $OllamaUrl    = if ($config.ollama_url) { $config.ollama_url } else { "http://localhost:11434" }
+$GroqApiKey   = $config.groq_api_key
+$GroqModel    = if ($config.groq_model) { $config.groq_model } else { "qwen/qwen3-32b" }
+$GrokApiKey   = $config.grok_api_key
+$GrokModel    = if ($config.grok_model) { $config.grok_model } else { "grok-3-mini" }
+$CerebrasApiKey = $config.cerebras_api_key
+$CerebrasModel  = if ($config.cerebras_model) { $config.cerebras_model } else { "llama-3.3-70b" }
+$SambaNovaApiKey = $config.sambanova_api_key
+$SambaNovaModel  = if ($config.sambanova_model) { $config.sambanova_model } else { "Meta-Llama-3.1-70B-Instruct" }
+$OpenRouterApiKey = $config.openrouter_api_key
+$OpenRouterModel  = if ($config.openrouter_model) { $config.openrouter_model } else { "qwen/qwen3-32b:free" }
+$HuggingFaceApiKey = $config.huggingface_api_key
+$HuggingFaceModel  = if ($config.huggingface_model) { $config.huggingface_model } else { "Qwen/Qwen2.5-72B-Instruct" }
 $AiProviderCfg = $config.ai_provider
 
 if (-not $TmdbApiKey) { Write-Host "Skipping: 'tmdb_api_key' not configured in $configfile" -ForegroundColor Yellow; exit 0 }
 
-# Determine AI provider: ai_provider forces choice, else ollama_model set → Ollama, else gemini_api_key → Gemini
+# Determine AI provider: ai_provider forces choice, else auto-detect from configured keys
 if ($AiProviderCfg -eq "gemini" -and $GeminiApiKey) {
     $AiProvider = "gemini"
     $AiModel = $GeminiModel
+} elseif ($AiProviderCfg -eq "groq" -and $GroqApiKey) {
+    $AiProvider = "groq"
+    $AiModel = $GroqModel
+} elseif ($AiProviderCfg -eq "grok" -and $GrokApiKey) {
+    $AiProvider = "grok"
+    $AiModel = $GrokModel
+} elseif ($AiProviderCfg -eq "cerebras" -and $CerebrasApiKey) {
+    $AiProvider = "cerebras"
+    $AiModel = $CerebrasModel
+} elseif ($AiProviderCfg -eq "sambanova" -and $SambaNovaApiKey) {
+    $AiProvider = "sambanova"
+    $AiModel = $SambaNovaModel
+} elseif ($AiProviderCfg -eq "openrouter" -and $OpenRouterApiKey) {
+    $AiProvider = "openrouter"
+    $AiModel = $OpenRouterModel
+} elseif ($AiProviderCfg -eq "huggingface" -and $HuggingFaceApiKey) {
+    $AiProvider = "huggingface"
+    $AiModel = $HuggingFaceModel
 } elseif ($AiProviderCfg -eq "ollama" -and $OllamaModel) {
     $AiProvider = "ollama"
     $AiModel = $OllamaModel
 } elseif ($OllamaModel) {
     $AiProvider = "ollama"
     $AiModel = $OllamaModel
+} elseif ($GroqApiKey) {
+    $AiProvider = "groq"
+    $AiModel = $GroqModel
+} elseif ($GrokApiKey) {
+    $AiProvider = "grok"
+    $AiModel = $GrokModel
+} elseif ($CerebrasApiKey) {
+    $AiProvider = "cerebras"
+    $AiModel = $CerebrasModel
+} elseif ($SambaNovaApiKey) {
+    $AiProvider = "sambanova"
+    $AiModel = $SambaNovaModel
+} elseif ($OpenRouterApiKey) {
+    $AiProvider = "openrouter"
+    $AiModel = $OpenRouterModel
+} elseif ($HuggingFaceApiKey) {
+    $AiProvider = "huggingface"
+    $AiModel = $HuggingFaceModel
 } elseif ($GeminiApiKey) {
     $AiProvider = "gemini"
     $AiModel = $GeminiModel
 } else {
-    Write-Host "Skipping: neither 'ollama_model' nor 'gemini_api_key' configured in $configfile" -ForegroundColor Yellow
+    Write-Host "Skipping: no AI provider configured in $configfile" -ForegroundColor Yellow
     exit 0
 }
 
@@ -75,13 +124,13 @@ $dirName = $baseName
 $OutputFile = Join-Path -Path $OutDir -ChildPath "${dirName}_description.bbcode"
 
 if ($query) {
-    $cleanName = $query
     $yearMatch = [regex]::Match($query, '\b(19|20)\d{2}\b')
     $Year = $(if ($yearMatch.Success) { $yearMatch.Value } else { $null })
+    $cleanName = ($query -replace '\b(19|20)\d{2}\b', '' -replace '(?i)\b(2160|1080|720|480|360)[pi]\b.*', '' -replace '(?i)\b(WEBRip|WEB-DL|WEBDL|BluRay|BDRip|BRRip|HDRip|HDTV|DVDRip|REMUX|WEB)\b.*', '').Trim()
 } else {
     $yearMatch = [regex]::Match($dirName, '\b(19|20)\d{2}\b')
     $Year = $(if ($yearMatch.Success) { $yearMatch.Value } else { $null })
-    $cleanName = $dirName -replace '[._]', ' ' -replace '(?i)\bSEASON\s+\d+\b', '' -replace ' - [Ss]\d{2}.*', '' -replace '\b[Ss]\d{2}.*', '' -replace '\b(19|20)\d{2}\b.*', '' -replace ' - WEBDL.*', '' -replace ' - WEB-DL.*', '' -replace '[\s([]+$', ''
+    $cleanName = $dirName -replace '[._]', ' ' -replace '(?i)\bSEASON\s+\d+\b', '' -replace ' - [Ss]\d{2}.*', '' -replace '\b[Ss]\d{2}.*', '' -replace '\b(19|20)\d{2}\b.*', '' -replace '(?i)\b(2160|1080|720|480|360)[pi]\b.*', '' -replace '(?i)\b(WEBRip|WEB-DL|WEBDL|BluRay|BDRip|BRRip|HDRip|HDTV|DVDRip|REMUX|WEB)\b.*', '' -replace '[\s([]+$', ''
 }
 $mediaType = $(if ($tv.IsPresent) { "tv" } else { "movie" })
 
@@ -126,7 +175,7 @@ if ($tmdbResponse.total_results -eq 0 -and -not $query) {
 # Fallback 3: try parent directory name (files only), with same title+year then title-only chain
 if ($tmdbResponse.total_results -eq 0 -and -not $query -and $singleFile) {
     $parentDir = Split-Path -Leaf (Split-Path -Parent $singleFile)
-    $parentClean = $parentDir -replace '[._]', ' ' -replace ' - [Ss]\d{2}.*', '' -replace '\b[Ss]\d{2}.*', '' -replace '\b(19|20)\d{2}\b.*', '' -replace ' - WEBDL.*', '' -replace ' - WEB-DL.*', '' -replace '[\s([]+$', ''
+    $parentClean = $parentDir -replace '[._]', ' ' -replace ' - [Ss]\d{2}.*', '' -replace '\b[Ss]\d{2}.*', '' -replace '\b(19|20)\d{2}\b.*', '' -replace '(?i)\b(2160|1080|720|480|360)[pi]\b.*', '' -replace '(?i)\b(WEBRip|WEB-DL|WEBDL|BluRay|BDRip|BRRip|HDRip|HDTV|DVDRip|REMUX|WEB)\b.*', '' -replace '[\s([]+$', ''
     $parentYearMatch = [regex]::Match($parentDir, '\b(19|20)\d{2}\b')
     $parentYear = $(if ($parentYearMatch.Success) { $parentYearMatch.Value } else { $null })
     if ($parentClean -and $parentClean -ne $cleanName) {
@@ -150,32 +199,52 @@ if ($tmdbResponse.total_results -eq 0 -and -not $query -and $singleFile) {
 }
 
 if ($tmdbResponse.total_results -eq 0) {
-    Write-Host "Warning: No TMDB results found for '$cleanName'. Skipping." -ForegroundColor Yellow
-    exit 0
-}
-
-# Pick best-matching result by title similarity
-$q = ($cleanName -replace '[^a-zA-Z0-9]', '').ToLower()
-$item = $tmdbResponse.results[0]
-$bestScore = -1
-foreach ($candidate in $tmdbResponse.results) {
-    if ($null -eq $candidate) { continue }
-    $t = if ($mediaType -eq 'movie') { $candidate.title } else { $candidate.name }
-    $tn = ($t -replace '[^a-zA-Z0-9]', '').ToLower()
-    $d = if ($mediaType -eq 'movie') { $candidate.release_date } else { $candidate.first_air_date }
-    $titleScore = if ($tn -eq $q) { 3 } elseif ($tn.StartsWith($q) -or $q.StartsWith($tn)) { 2 } elseif ($tn.Contains($q) -or $q.Contains($tn)) { 1 } else { 0 }
-    $yearBonus = if ($Year -and $d -and $d.StartsWith("$Year")) { 1 } else { 0 }
-    $score = $titleScore * 2 + $yearBonus
-    if ($score -gt $bestScore) { $bestScore = $score; $item = $candidate }
-}
-$imageBase = "https://image.tmdb.org/t/p"
-$tmdbInfo = [PSCustomObject]@{
-    Title    = $(if ($mediaType -eq 'movie') { $item.title } else { $item.name })
-    Date     = $(if ($mediaType -eq 'movie') { $item.release_date } else { $item.first_air_date })
-    ID       = $item.id
-    Overview = $item.overview
-    Poster   = "$imageBase/w500$($item.poster_path)"
-    Banner   = "$imageBase/original$($item.backdrop_path)"
+    Write-Host "Warning: No TMDB results found for '$cleanName'. Continuing with directory name only." -ForegroundColor Yellow
+    $omdbPoster = ""
+    if ($OmdbApiKey) {
+        $omdbQuery = [uri]::EscapeDataString($cleanName)
+        $omdbUrl = "https://www.omdbapi.com/?apikey=$OmdbApiKey&t=$omdbQuery"
+        if ($Year) { $omdbUrl += "&y=$Year" }
+        try {
+            $omdbData = Invoke-RestMethod -Uri $omdbUrl
+            if ($omdbData.Poster -and $omdbData.Poster -ne 'N/A') {
+                $omdbPoster = $omdbData.Poster
+                Write-Host "OMDB poster found: $omdbPoster"
+            }
+        } catch {}
+    }
+    $tmdbInfo = [PSCustomObject]@{
+        Title    = $cleanName
+        Date     = $(if ($Year) { "$Year-01-01" } else { "" })
+        ID       = ""
+        Overview = ""
+        Poster   = $omdbPoster
+        Banner   = ""
+    }
+} else {
+    # Pick best-matching result by title similarity
+    $q = ($cleanName -replace '[^a-zA-Z0-9]', '').ToLower()
+    $item = $tmdbResponse.results[0]
+    $bestScore = -1
+    foreach ($candidate in $tmdbResponse.results) {
+        if ($null -eq $candidate) { continue }
+        $t = if ($mediaType -eq 'movie') { $candidate.title } else { $candidate.name }
+        $tn = ($t -replace '[^a-zA-Z0-9]', '').ToLower()
+        $d = if ($mediaType -eq 'movie') { $candidate.release_date } else { $candidate.first_air_date }
+        $titleScore = if ($tn -eq $q) { 3 } elseif ($tn.StartsWith($q) -or $q.StartsWith($tn)) { 2 } elseif ($tn.Contains($q) -or $q.Contains($tn)) { 1 } else { 0 }
+        $yearBonus = if ($Year -and $d -and $d.StartsWith("$Year")) { 1 } else { 0 }
+        $score = $titleScore * 2 + $yearBonus
+        if ($score -gt $bestScore) { $bestScore = $score; $item = $candidate }
+    }
+    $imageBase = "https://image.tmdb.org/t/p"
+    $tmdbInfo = [PSCustomObject]@{
+        Title    = $(if ($mediaType -eq 'movie') { $item.title } else { $item.name })
+        Date     = $(if ($mediaType -eq 'movie') { $item.release_date } else { $item.first_air_date })
+        ID       = $item.id
+        Overview = $item.overview
+        Poster   = "$imageBase/w500$($item.poster_path)"
+        Banner   = "$imageBase/original$($item.backdrop_path)"
+    }
 }
 Write-Host "Title: $($tmdbInfo.Title)"
 Write-Host "Date: $($tmdbInfo.Date)"
@@ -310,13 +379,15 @@ if ($seasonInfo) {
     $seasonLine = "`nSeason: $($seasonInfo.Name) ($($seasonInfo.Episodes) episodes, air date: $($seasonInfo.AirDate))"
     if ($seasonInfo.Overview) { $seasonLine += "`nSeason Overview: $($seasonInfo.Overview)" }
 }
+$posterLine = "Poster: $($tmdbInfo.Poster)"
+$bannerLine = "Banner: $($tmdbInfo.Banner)"
 $promptContent = @"
 Title: $($tmdbInfo.Title)
 Date: $($tmdbInfo.Date)
 ID: $($tmdbInfo.ID)
 Overview: $($tmdbInfo.Overview)
-Poster: $($tmdbInfo.Poster)
-Banner: $($tmdbInfo.Banner)$bgTitleLine
+$posterLine
+$bannerLine$bgTitleLine
 Release Year: $releaseYear
 Directory: $dirName$seasonLine$castLine2$directorLine$genreLine2$ratingLine2$rtLine2$mediaLine
 "@
@@ -330,7 +401,13 @@ $callArgs = @{
     model      = $AiModel
     systemfile = $systemFile
 }
-if ($GeminiApiKey) { $callArgs['apikey'] = $GeminiApiKey }
+if ($AiProvider -eq 'gemini') { $callArgs['apikey'] = $GeminiApiKey }
+if ($AiProvider -eq 'groq') { $callArgs['apikey'] = $GroqApiKey }
+if ($AiProvider -eq 'grok') { $callArgs['apikey'] = $GrokApiKey }
+if ($AiProvider -eq 'cerebras') { $callArgs['apikey'] = $CerebrasApiKey }
+if ($AiProvider -eq 'sambanova') { $callArgs['apikey'] = $SambaNovaApiKey }
+if ($AiProvider -eq 'openrouter') { $callArgs['apikey'] = $OpenRouterApiKey }
+if ($AiProvider -eq 'huggingface') { $callArgs['apikey'] = $HuggingFaceApiKey }
 if ($AiProvider -eq 'ollama') { $callArgs['baseurl'] = $OllamaUrl }
 
 try {

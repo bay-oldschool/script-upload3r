@@ -70,7 +70,12 @@ if ($duration -eq 0) {
 }
 Write-Host "Duration: ${duration}s"
 
-$timestamps = @([int]($duration * 0.15)), @([int]($duration * 0.50)), @([int]($duration * 0.85))
+$rng = New-Object System.Random
+$timestamps = @(
+    [int]($duration * ($rng.Next(10, 21) / 100.0)),
+    [int]($duration * ($rng.Next(35, 46) / 100.0)),
+    [int]($duration * ($rng.Next(65, 76) / 100.0))
+)
 $name = $baseName
 
 New-Item -Path $outputdir -ItemType Directory -ErrorAction SilentlyContinue
@@ -78,8 +83,8 @@ Write-Host "Taking screenshots..."
 
 for ($i = 0; $i -lt $timestamps.Length; $i++) {
     $screenNum = ($i + 1).ToString("00")
-    $outputFile = Join-Path -Path $outputdir -ChildPath "${name}_screen${screenNum}.jpg"
-    & $FFmpegExe -ss $timestamps[$i] -i $VideoFile.FullName -vframes 1 -q:v 2 -y $outputFile -v error
+    $outputFile = Join-Path -Path $outputdir -ChildPath "${name}_screen${screenNum}.png"
+    & $FFmpegExe -ss $timestamps[$i] -i $VideoFile.FullName -vframes 1 -y $outputFile -v error
     Write-Host "Saved: $outputFile" -ForegroundColor Green
 }
 

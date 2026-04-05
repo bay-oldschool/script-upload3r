@@ -52,13 +52,13 @@ New-Item -Path $OutDir -ItemType Directory -ErrorAction SilentlyContinue
 $OutputFile = Join-Path -Path $OutDir -ChildPath "${baseName}_tmdb.txt"
 
 if ($query) {
-    $cleanQuery = $query
     $yearMatch = [regex]::Match($query, '\b(19|20)\d{2}\b')
     $Year = $(if ($yearMatch.Success) { $yearMatch.Value } else { $null })
+    $cleanQuery = ($query -replace '\b(19|20)\d{2}\b', '' -replace '(?i)\b(2160|1080|720|480|360)[pi]\b.*', '' -replace '(?i)\b(WEBRip|WEB-DL|WEBDL|BluRay|BDRip|BRRip|HDRip|HDTV|DVDRip|REMUX|WEB)\b.*', '').Trim()
 } else {
     $yearMatch = [regex]::Match($baseName, '\b(19|20)\d{2}\b')
     $Year = $(if ($yearMatch.Success) { $yearMatch.Value } else { $null })
-    $cleanQuery = $baseName -replace '[._]', ' ' -replace '(?i)\bSEASON\s+\d+\b', '' -replace ' - [Ss]\d{2}.*', '' -replace '\b[Ss]\d{2}.*', '' -replace '\b(19|20)\d{2}\b.*', '' -replace ' - WEBDL.*', '' -replace ' - WEB-DL.*', '' -replace '[\s([]+$', ''
+    $cleanQuery = $baseName -replace '[._]', ' ' -replace '(?i)\bSEASON\s+\d+\b', '' -replace ' - [Ss]\d{2}.*', '' -replace '\b[Ss]\d{2}.*', '' -replace '\b(19|20)\d{2}\b.*', '' -replace '(?i)\b(2160|1080|720|480|360)[pi]\b.*', '' -replace '(?i)\b(WEBRip|WEB-DL|WEBDL|BluRay|BDRip|BRRip|HDRip|HDTV|DVDRip|REMUX|WEB)\b.*', '' -replace '[\s([]+$', ''
 }
 
 $mediaType = $(if ($tv.IsPresent) { "tv" } else { "movie" })
@@ -105,7 +105,7 @@ if ($response.total_results -eq 0 -and -not $query) {
 # Fallback 3: try parent directory name (files only), with same title+year then title-only chain
 if ($response.total_results -eq 0 -and -not $query -and $singleFile) {
     $parentDir = Split-Path -Leaf (Split-Path -Parent $singleFile)
-    $parentClean = $parentDir -replace '[._]', ' ' -replace ' - [Ss]\d{2}.*', '' -replace '\b[Ss]\d{2}.*', '' -replace '\b(19|20)\d{2}\b.*', '' -replace ' - WEBDL.*', '' -replace ' - WEB-DL.*', '' -replace '[\s([]+$', ''
+    $parentClean = $parentDir -replace '[._]', ' ' -replace ' - [Ss]\d{2}.*', '' -replace '\b[Ss]\d{2}.*', '' -replace '\b(19|20)\d{2}\b.*', '' -replace '(?i)\b(2160|1080|720|480|360)[pi]\b.*', '' -replace '(?i)\b(WEBRip|WEB-DL|WEBDL|BluRay|BDRip|BRRip|HDRip|HDTV|DVDRip|REMUX|WEB)\b.*', '' -replace '[\s([]+$', ''
     $parentYearMatch = [regex]::Match($parentDir, '\b(19|20)\d{2}\b')
     $parentYear = $(if ($parentYearMatch.Success) { $parentYearMatch.Value } else { $null })
     if ($parentClean -and $parentClean -ne $cleanQuery) {

@@ -1,0 +1,30 @@
+📦 Install Tools
+🔍 Checking tools:
+🎬 ffmpeg + ffprobe
+ℹ️ MediaInfo
+🖼️ ImageMagick
+🎨 chafa
+🅰️ All
+🚪 Exit
+⬇️ Downloading ffmpeg...
+📂 Extracting ffmpeg...
+✅ ffmpeg + ffprobe installed.
+⬇️ Downloading MediaInfo...
+📂 Extracting MediaInfo...
+✅ MediaInfo installed.
+⬇️ Installing ImageMagick via winget...
+✅ ImageMagick installed.
+⬇️ Installing chafa via winget...
+✅ chafa installed.
+✔️ ffmpeg + ffprobe already present.
+✔️ MediaInfo already present.
+✔️ ImageMagick already present.
+✔️ chafa already present.
+⚠️ winget not found. Install manually.
+⚠️ Invalid selection.
+👋 Exiting.
+⏱️ All tools ready. Took
+❓ Select tool to install (Enter=all)
+📝 Created config.jsonc from example.
+✔️ config.jsonc already exists.
+🔄 Restart terminal for PATH update.

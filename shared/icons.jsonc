@@ -5,5 +5,9 @@
   "approved": "✅",
   "pending": "⏳",
   "rejected": "❌",
-  "postponed": "⏸️"
+  "postponed": "⏸️",
+  // Action icons for list_uploads
+  "edit": "✏️",
+  "delete": "🗑️",
+  "subtitle": "🔤"
 }

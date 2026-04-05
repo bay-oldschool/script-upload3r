@@ -17,6 +17,7 @@ set "RESET=%ESC%[0m"
 
 set "LAST_PATH_FILE=%~dp0output\.last_path.txt"
 set "SAVED_PATHS_FILE=%~dp0output\.saved_paths.txt"
+set "TMPPATH=%TEMP%\_media_path.tmp"
 
 :: If arguments provided, pass directly to run.ps1 (no menu)
 if not "%~1"=="" (
@@ -33,10 +34,92 @@ if not exist "%~dp0tools\ffprobe.exe" set "MISSING=!MISSING! ffprobe.exe"
 if not exist "%~dp0tools\MediaInfo.exe" set "MISSING=!MISSING! MediaInfo.exe"
 if not "!MISSING!"=="" goto welcome
 
+:read_config
+:: Read logo settings from config (defaults: show=1, source=text, width=80, letters=160, dark=210, light=95)
+set "SHOW_LOGO=1"
+set "LOGO_SOURCE=text"
+set "LOGO_DISPLAY=ansi"
+set "LOGO_WIDTH=80"
+set "LOGO_CLR_R=160"
+set "LOGO_CLR_D=210"
+set "LOGO_CLR_L=95"
+for /f "usebackq delims=" %%L in ("%~dp0config.jsonc") do (
+    set "LINE=%%L"
+    if not "!LINE:show_logo=!"=="!LINE!" for /f "tokens=2 delims=:" %%V in ("!LINE!") do set "TMPVAL=%%V" & set "TMPVAL=!TMPVAL: =!" & set "SHOW_LOGO=!TMPVAL:,=!"
+    if not "!LINE:logo_source=!"=="!LINE!" for /f "tokens=2 delims=:" %%V in ("!LINE!") do set "TMPVAL=%%V" & set "TMPVAL=!TMPVAL: =!" & set "LOGO_SOURCE=!TMPVAL:,=!"
+    if not "!LINE:logo_display=!"=="!LINE!" for /f "tokens=2 delims=:" %%V in ("!LINE!") do set "TMPVAL=%%V" & set "TMPVAL=!TMPVAL: =!" & set "LOGO_DISPLAY=!TMPVAL:,=!"
+    if not "!LINE:logo_width=!"=="!LINE!" for /f "tokens=2 delims=:" %%V in ("!LINE!") do set "TMPVAL=%%V" & set "TMPVAL=!TMPVAL: =!" & set "LOGO_WIDTH=!TMPVAL:,=!"
+    if not "!LINE:logo_color_letters=!"=="!LINE!" for /f "tokens=2 delims=:" %%V in ("!LINE!") do set "TMPVAL=%%V" & set "TMPVAL=!TMPVAL: =!" & set "LOGO_CLR_R=!TMPVAL:,=!"
+    if not "!LINE:logo_color_dark=!"=="!LINE!" for /f "tokens=2 delims=:" %%V in ("!LINE!") do set "TMPVAL=%%V" & set "TMPVAL=!TMPVAL: =!" & set "LOGO_CLR_D=!TMPVAL:,=!"
+    if not "!LINE:logo_color_light=!"=="!LINE!" for /f "tokens=2 delims=:" %%V in ("!LINE!") do set "TMPVAL=%%V" & set "TMPVAL=!TMPVAL: =!" & set "LOGO_CLR_L=!TMPVAL:,=!"
+)
+set "CLR_R=%ESC%[38;5;!LOGO_CLR_R!m"
+set "CLR_D=%ESC%[38;5;!LOGO_CLR_D!m"
+set "CLR_L=%ESC%[38;5;!LOGO_CLR_L!m"
+:: Check image tools once, fall back to text if neither found
+set "HAS_CHAFA=0"
+set "HAS_MAGICK=0"
+where chafa.exe >nul 2>&1 && set "HAS_CHAFA=1"
+where magick.exe >nul 2>&1 && set "HAS_MAGICK=1"
+if /i !LOGO_SOURCE!=="image" if "!HAS_CHAFA!"=="0" if "!HAS_MAGICK!"=="0" set "LOGO_SOURCE=text"
+if "!_GOTO_AFTER_CONFIG!"=="maintenance" set "_GOTO_AFTER_CONFIG=" & goto maintenance
+
 :menu
 cls
+if "!SHOW_LOGO!"=="0" goto skip_logo
+echo.
+if /i not !LOGO_SOURCE!=="image" goto logo_text
+if /i !LOGO_DISPLAY!=="direct" goto logo_direct
+if /i !LOGO_DISPLAY!=="ansi" goto logo_ansi
+if /i !LOGO_DISPLAY!=="block" goto logo_block
+if /i !LOGO_DISPLAY!=="ascii" goto logo_ascii
+goto logo_ansi
+:logo_direct
+where chafa.exe >nul 2>&1
+if errorlevel 1 goto logo_direct_magick
+chafa --format sixel -s !LOGO_WIDTH!x --fg-only "%~dp0shared\logo.png"
+goto skip_logo_text
+:logo_direct_magick
+where magick.exe >nul 2>&1
+if errorlevel 1 goto logo_text
+set /a LOGO_PX=!LOGO_WIDTH! * 8
+magick "%~dp0shared\logo.png" -fuzz 10%% -transparent white -resize !LOGO_PX!x sixel:-
+echo.
+goto skip_logo_text
+:logo_ansi
+where chafa.exe >nul 2>&1
+if errorlevel 1 goto logo_ansi_magick
+chafa --format symbols -s !LOGO_WIDTH!x --symbols block+border+space --color-space din99d "%~dp0shared\logo.png"
+goto skip_logo_text
+:logo_ansi_magick
+where magick.exe >nul 2>&1
+if errorlevel 1 goto logo_text
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0ps\logo_image.ps1" -Width !LOGO_WIDTH!
+goto skip_logo_text
+:logo_block
+where chafa.exe >nul 2>&1
+if errorlevel 1 goto logo_text
+chafa --format symbols -s !LOGO_WIDTH!x --symbols block+space --fg-only "%~dp0shared\logo.png"
+goto skip_logo_text
+:logo_ascii
+where chafa.exe >nul 2>&1
+if errorlevel 1 goto logo_text
+chafa --format symbols -s !LOGO_WIDTH!x --symbols ascii --fg-only "%~dp0shared\logo.png"
+goto skip_logo_text
+:logo_text
+for /f "usebackq delims=" %%L in ("%~dp0shared\logo.txt") do (
+    set "LINE=%%L"
+    set "LINE=!LINE:{R}=%CLR_R%!"
+    set "LINE=!LINE:{D}=%CLR_D%!"
+    set "LINE=!LINE:{L}=%CLR_L%!"
+    set "LINE=!LINE:{0}=%RESET%!"
+    echo !LINE!
+)
+:skip_logo_text
+echo.
+:skip_logo
 echo %BLUE%========================================%RESET%
-echo %BLUE%   UPLOAD3R - MAIN MENU%RESET%
+echo %BLUE%   SCRIPT UPLOAD3R - MAIN MENU%RESET%
 echo %BLUE%========================================%RESET%
 echo.
 echo  1) 📂 Browse for folder (graphical)
@@ -67,7 +150,7 @@ goto menu
 if not exist "%LAST_PATH_FILE%" goto use_last_empty
 set /p MEDIA_PATH=<"%LAST_PATH_FILE%"
 echo.
-echo  Using: %CYAN%!MEDIA_PATH!%RESET%
+powershell -NoProfile -Command "Write-Host ('  Using: ' + $env:MEDIA_PATH) -ForegroundColor Cyan"
 goto validate_path
 
 :use_last_empty
@@ -82,9 +165,11 @@ echo Opening folder browser...
 echo.
 
 set "MEDIA_PATH="
-for /f "usebackq delims=" %%I in (`powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0ps\browse_folder.ps1" -title "Select media folder"`) do set "MEDIA_PATH=%%I"
-
-if not "!MEDIA_PATH!"=="" goto validate_path
+setlocal disabledelayedexpansion
+for /f "usebackq delims=" %%I in (`powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0ps\browse_folder.ps1" -title "Select media folder"`) do >"%TMPPATH%" echo %%I
+endlocal
+if exist "%TMPPATH%" (set /p MEDIA_PATH=<"%TMPPATH%" & del "%TMPPATH%")
+powershell -NoProfile -Command "if ($env:MEDIA_PATH) { exit 0 } else { exit 1 }" && goto validate_path
 echo.
 echo %RED%No folder selected!%RESET%
 timeout /t 2 > nul
@@ -96,9 +181,11 @@ echo Opening file browser...
 echo.
 
 set "MEDIA_PATH="
-for /f "usebackq delims=" %%I in (`powershell -Command "Add-Type -AssemblyName System.Windows.Forms; $f = New-Object System.Windows.Forms.OpenFileDialog; $f.Title = 'Select media file:'; $f.Filter = 'Video files (*.mkv;*.mp4;*.avi;*.ts)|*.mkv;*.mp4;*.avi;*.ts|All files (*.*)|*.*'; $f.ShowDialog() | Out-Null; if ($f.FileName) { $f.FileName } else { '' }"`) do set "MEDIA_PATH=%%I"
-
-if not "!MEDIA_PATH!"=="" goto validate_path
+setlocal disabledelayedexpansion
+for /f "usebackq delims=" %%I in (`powershell -Command "Add-Type -AssemblyName System.Windows.Forms; $f = New-Object System.Windows.Forms.OpenFileDialog; $f.Title = 'Select media file:'; $f.Filter = 'Video files (*.mkv;*.mp4;*.avi;*.ts)|*.mkv;*.mp4;*.avi;*.ts|All files (*.*)|*.*'; $f.ShowDialog() | Out-Null; if ($f.FileName) { $f.FileName } else { '' }"`) do >"%TMPPATH%" echo %%I
+endlocal
+if exist "%TMPPATH%" (set /p MEDIA_PATH=<"%TMPPATH%" & del "%TMPPATH%")
+powershell -NoProfile -Command "if ($env:MEDIA_PATH) { exit 0 } else { exit 1 }" && goto validate_path
 echo.
 echo %RED%No file selected!%RESET%
 timeout /t 2 > nul
@@ -111,51 +198,40 @@ echo (you can drag and drop the folder here)
 echo.
 set "MEDIA_PATH="
 set /p "MEDIA_PATH=Path: "
-set "MEDIA_PATH=!MEDIA_PATH:"=!"
-
-if not "!MEDIA_PATH!"=="" goto validate_path
+:: Strip quotes and preserve ! via PowerShell temp file
+powershell -NoProfile -Command "$p = $env:MEDIA_PATH.Trim('""', ' '); if ($p) { [IO.File]::WriteAllText('%TMPPATH%', $p); exit 0 } else { exit 1 }"
+if errorlevel 1 goto manual_path_empty
+set /p MEDIA_PATH=<"%TMPPATH%"
+del "%TMPPATH%" 2>nul
+goto validate_path
+:manual_path_empty
 echo %RED%Error: Path cannot be empty!%RESET%
 timeout /t 2 > nul
 goto manual_path
 
 :validate_path
-if not exist "!MEDIA_PATH!" goto path_not_exist
-
-:: Save to last path
-> "%LAST_PATH_FILE%" <nul set /p ="!MEDIA_PATH!"
-
-:: Save to saved paths (if not already there)
-if not exist "%SAVED_PATHS_FILE%" goto save_new_run_path
-findstr /x /C:"!MEDIA_PATH!" "%SAVED_PATHS_FILE%" >nul 2>&1
-if errorlevel 1 >> "%SAVED_PATHS_FILE%" echo !MEDIA_PATH!
-goto done_save_path
-
-:save_new_run_path
-> "%SAVED_PATHS_FILE%" echo !MEDIA_PATH!
-
-:done_save_path
-for %%F in ("!MEDIA_PATH!") do set "ITEM_NAME=%%~nxF"
-:: Detect if path is a file or folder
-set "PATH_LABEL=Folder"
-for /f "usebackq delims=" %%L in (`powershell -NoProfile -Command "if (Test-Path -LiteralPath '!MEDIA_PATH!' -PathType Leaf) { 'File' } else { 'Folder' }"`) do set "PATH_LABEL=%%L"
-
-:: Compute clean query name (same logic as tmdb.ps1)
-for /f "delims=" %%Q in ('powershell -NoProfile -Command "$n='!ITEM_NAME!'; $n=$n -replace '[._]',' ' -replace '(?i)\bSEASON\s+\d+\b','' -replace ' - [Ss]\d{2}.*','' -replace '\b[Ss]\d{2}.*','' -replace '\b(19|20)\d{2}\b.*','' -replace ' - WEBDL.*','' -replace ' - WEB-DL.*','' -replace '[\s([]+$',''; Write-Output $n.Trim()"') do set "CLEAN_QUERY=%%Q"
+:: Single PowerShell call: validate path, save paths, get item name, path type, and clean query
+for /f "usebackq tokens=1,2,* delims=|" %%A in (`powershell -NoProfile -Command "$p=$env:MEDIA_PATH; if (-not (Test-Path -LiteralPath $p)) { exit 1 }; [IO.File]::WriteAllText('%LAST_PATH_FILE%',$p); $sf='%SAVED_PATHS_FILE%'; if (Test-Path $sf) { $lines=[IO.File]::ReadAllLines($sf); if ($lines -notcontains $p) { [IO.File]::AppendAllText($sf,$p+[Environment]::NewLine) } } else { [IO.File]::WriteAllText($sf,$p+[Environment]::NewLine) }; $leaf=Split-Path -Leaf $p; $pt=if(Test-Path -LiteralPath $p -PathType Leaf){'File'}else{'Folder'}; $n=$leaf -replace '[._]',' ' -replace '(?i)\bSEASON\s+\d+\b','' -replace ' - [Ss]\d{2}.*','' -replace '\b[Ss]\d{2}.*','' -replace '\b(19|20)\d{2}\b.*','' -replace '(?i)\b(2160|1080|720|480|360)[pi]\b.*','' -replace '(?i)\b(WEBRip|WEB-DL|WEBDL|BluRay|BDRip|BRRip|HDRip|HDTV|DVDRip|REMUX|WEB)\b.*','' -replace '[\s([]+$',''; Write-Output ($leaf+'|'+$pt+'|'+$n.Trim())"`) do (
+    set "ITEM_NAME=%%A"
+    set "PATH_LABEL=%%B"
+    set "CLEAN_QUERY=%%C"
+)
+if not defined ITEM_NAME goto path_not_exist
 
 :: Auto-detect year from filename
 set "DETECTED_YEAR="
-for /f "delims=" %%Y in ('powershell -NoProfile -Command "if ('!ITEM_NAME!' -match '\b(19|20)\d{2}\b') { $matches[0] } else { '' }"') do set "DETECTED_YEAR=%%Y"
+for /f "usebackq delims=" %%Y in (`powershell -NoProfile -Command "if ($env:ITEM_NAME -match '\b(19|20)\d{2}\b') { $matches[0] } else { '' }"`) do set "DETECTED_YEAR=%%Y"
 
 :: Auto-detect season number from filename
 set "SEASON_NUM="
-for /f "delims=" %%S in ('powershell -NoProfile -Command "if ('!ITEM_NAME!' -match '(?i)S(\d+)') { [int]$matches[1] } else { '' }"') do set "SEASON_NUM=%%S"
+for /f "usebackq delims=" %%S in (`powershell -NoProfile -Command "if ($env:ITEM_NAME -match '(?i)S(\d+)') { [int]$matches[1] } else { '' }"`) do set "SEASON_NUM=%%S"
 
 goto select_type
 
 :path_not_exist
 echo.
 echo %RED%ERROR: Path does not exist!%RESET%
-echo "!MEDIA_PATH!"
+powershell -NoProfile -Command "Write-Host $env:MEDIA_PATH"
 echo.
 timeout /t 2 > nul
 goto menu
@@ -170,20 +246,151 @@ echo  !PATH_LABEL!: %CYAN%!ITEM_NAME!%RESET%
 echo.
 echo  1) 🎬 MOVIE
 echo  2) 📺 TV SERIES
+echo  3) 🎮 GAME
+echo  4) 💻 SOFTWARE
 echo  0) 🚪 Back to main menu
 echo.
-set "TYPE_CHOICE="
-set /p "TYPE_CHOICE=Select [1]: "
-
-if "!TYPE_CHOICE!"=="0" goto menu
-if "!TYPE_CHOICE!"=="" set "TV_OPTION=" & set "TYPE_LABEL=MOVIE" & goto select_steps
-if "!TYPE_CHOICE!"=="1" set "TV_OPTION=" & set "TYPE_LABEL=MOVIE" & goto select_steps
-if "!TYPE_CHOICE!"=="2" set "TV_OPTION=-tv" & set "TYPE_LABEL=TV SERIES" & goto select_steps
-echo %RED%Invalid choice!%RESET%
-timeout /t 1 > nul
+choice /c 12340 /n /m "Select (0-4): "
+if errorlevel 5 goto menu
+if errorlevel 4 goto select_steps_software
+if errorlevel 3 goto select_steps_game
+if errorlevel 2 set "TV_OPTION=-tv" & set "TYPE_LABEL=TV SERIES" & goto select_steps
+if errorlevel 1 set "TV_OPTION=" & set "TYPE_LABEL=MOVIE" & goto select_steps
 goto select_type
 
+:select_steps_game
+set "TYPE_LABEL=GAME"
+set "POSTER_VALUE="
+set "PIPELINE_SCRIPT=run_game.ps1"
+set "CREATE_STEP=1"
+set "STEPS_BACK=select_steps_game"
+set "CONFIRM_TARGET=simple_confirm"
+cls
+echo %BLUE%========================================%RESET%
+echo %BLUE%   GAME STEPS SELECTION%RESET%
+echo %BLUE%========================================%RESET%
+echo.
+echo  Available steps:
+echo    1) 🧲 create      - Create .torrent file
+echo    2) 🔍 igdb        - Search IGDB for metadata
+echo    3) 🤖 describe    - Generate AI description
+echo    4) 📝 description - Build final BBCode description
+echo.
+echo  Enter comma-separated step numbers (e.g. 2,3,4)
+echo  or press Enter to run ALL steps.
+echo  Type 0 to go back.
+echo.
+set "STEPS_INPUT="
+set /p "STEPS_INPUT=Steps: "
+if "!STEPS_INPUT!"=="0" goto select_type
+if "!STEPS_INPUT!"=="" set "STEPS_OPTION=" & set "STEPS_LABEL=ALL" & goto select_dht
+set "STEPS_OPTION=-steps !STEPS_INPUT!" & set "STEPS_LABEL=!STEPS_INPUT!"
+echo !STEPS_INPUT! | findstr /C:"!CREATE_STEP!" >nul 2>&1
+if not errorlevel 1 goto select_dht
+set "DHT_OPTION=" & set "DHT_LABEL=DISABLED" & goto simple_confirm
+
+:select_steps_software
+set "TYPE_LABEL=SOFTWARE"
+set "POSTER_VALUE="
+set "PIPELINE_SCRIPT=run_software.ps1"
+set "CREATE_STEP=1"
+set "STEPS_BACK=select_steps_software"
+set "CONFIRM_TARGET=simple_confirm"
+cls
+echo %BLUE%========================================%RESET%
+echo %BLUE%   SOFTWARE STEPS SELECTION%RESET%
+echo %BLUE%========================================%RESET%
+echo.
+echo  Available steps:
+echo    1) 🧲 create      - Create .torrent file
+echo    2) 🤖 describe    - Generate AI description
+echo    3) 📝 description - Build final BBCode description
+echo.
+echo  Enter comma-separated step numbers (e.g. 2,3)
+echo  or press Enter to run ALL steps.
+echo  Type 0 to go back.
+echo.
+set "STEPS_INPUT="
+set /p "STEPS_INPUT=Steps: "
+if "!STEPS_INPUT!"=="0" goto select_type
+if "!STEPS_INPUT!"=="" set "STEPS_OPTION=" & set "STEPS_LABEL=ALL" & goto select_dht
+set "STEPS_OPTION=-steps !STEPS_INPUT!" & set "STEPS_LABEL=!STEPS_INPUT!"
+echo !STEPS_INPUT! | findstr /C:"!CREATE_STEP!" >nul 2>&1
+if not errorlevel 1 goto select_dht
+set "DHT_OPTION=" & set "DHT_LABEL=DISABLED" & goto simple_confirm
+
+:: Shared confirm + execute for game/software pipelines
+:simple_confirm
+cls
+echo %BLUE%========================================%RESET%
+echo %BLUE%   CONFIRMATION%RESET%
+echo %BLUE%========================================%RESET%
+echo.
+echo  !PATH_LABEL!: %CYAN%!ITEM_NAME!%RESET%
+powershell -NoProfile -Command "Write-Host ('  Path:   ' + $env:MEDIA_PATH)"
+echo  Type:   %CYAN%!TYPE_LABEL!%RESET%
+echo  Steps:  %CYAN%!STEPS_LABEL!%RESET%
+echo  DHT:    %CYAN%!DHT_LABEL!%RESET%
+if not "!POSTER_VALUE!"=="" echo  Poster: %CYAN%!POSTER_VALUE!%RESET%
+echo.
+set "QUERY_INPUT="
+set /p "QUERY_INPUT=Search title [auto]: "
+set "QUERY_OPTION="
+if not "!QUERY_INPUT!"=="" set "QUERY_OPTION=-query "!QUERY_INPUT!""
+:: Ask for poster image (file path, URL, or browse)
+echo.
+echo  Poster image:
+echo   1) 📁 Browse for file
+echo   2) ✏  Enter path or URL
+echo   0) ⏭  Skip
+if not "!POSTER_VALUE!"=="" echo   Current: %CYAN%!POSTER_VALUE!%RESET%
+echo.
+choice /c 120 /n /m "Select (0-2): "
+if errorlevel 3 goto poster_done
+if errorlevel 2 goto poster_manual
+if errorlevel 1 goto poster_browse
+goto poster_done
+:poster_browse
+:: Browse for poster file
+set "POSTER_VALUE="
+setlocal disabledelayedexpansion
+for /f "usebackq delims=" %%I in (`powershell -Command "Add-Type -AssemblyName System.Windows.Forms; $f = New-Object System.Windows.Forms.OpenFileDialog; $f.Title = 'Select poster image'; $f.Filter = 'Image files (*.jpg;*.jpeg;*.png;*.webp)|*.jpg;*.jpeg;*.png;*.webp|All files (*.*)|*.*'; $f.ShowDialog() | Out-Null; if ($f.FileName) { $f.FileName } else { '' }"`) do >"%TMPPATH%" echo %%I
+endlocal
+if exist "%TMPPATH%" (set /p POSTER_VALUE=<"%TMPPATH%" & del "%TMPPATH%")
+if not "!POSTER_VALUE!"=="" echo   Selected: %CYAN%!POSTER_VALUE!%RESET%
+goto poster_done
+:poster_manual
+set "POSTER_INPUT="
+set /p "POSTER_INPUT=Path or URL: "
+if not "!POSTER_INPUT!"=="" set "POSTER_VALUE=!POSTER_INPUT!"
+:poster_done
+set "POSTER_OPTION="
+if not "!POSTER_VALUE!"=="" set "POSTER_OPTION=-poster "!POSTER_VALUE!""
+echo.
+set "SC_CONFIRM="
+set /p "SC_CONFIRM=Proceed? (y/n) [y]: "
+if "!SC_CONFIRM!"=="" set "SC_CONFIRM=y"
+if /i "!SC_CONFIRM!"=="n" goto menu
+if /i not "!SC_CONFIRM!"=="y" goto simple_confirm
+
+cls
+echo %BLUE%========================================%RESET%
+echo %BLUE%   RUNNING !TYPE_LABEL! PIPELINE%RESET%
+echo %BLUE%========================================%RESET%
+echo.
+powershell -ExecutionPolicy Bypass -Command "& '%~dp0ps\!PIPELINE_SCRIPT!' !DHT_OPTION! !STEPS_OPTION! !QUERY_OPTION! !POSTER_OPTION! $env:MEDIA_PATH"
+set "EXIT_CODE=!errorlevel!"
+echo.
+if not !EXIT_CODE! equ 0 goto execute_failed
+echo %GREEN%========================================%RESET%
+echo %GREEN%   ✅ PROCESS COMPLETED SUCCESSFULLY%RESET%
+echo %GREEN%========================================%RESET%
+goto final_menu
+
 :select_steps
+set "STEPS_BACK=select_steps"
+set "CREATE_STEP=2"
+set "CONFIRM_TARGET=confirm"
 cls
 echo %BLUE%========================================%RESET%
 echo %BLUE%   STEPS SELECTION%RESET%
@@ -211,9 +418,9 @@ if "!STEPS_INPUT!"=="" set "STEPS_OPTION=" & set "STEPS_LABEL=ALL" & goto select
 set "STEPS_OPTION=-steps !STEPS_INPUT!" & set "STEPS_LABEL=!STEPS_INPUT!"
 
 :: Check if step 2 (create torrent) is in the selected steps
-echo !STEPS_INPUT! | findstr /C:"2" >nul 2>&1
+echo !STEPS_INPUT! | findstr /C:"!CREATE_STEP!" >nul 2>&1
 if not errorlevel 1 goto select_dht
-set "DHT_OPTION=" & set "DHT_LABEL=DISABLED" & goto confirm
+set "DHT_OPTION=" & set "DHT_LABEL=DISABLED" & goto !CONFIRM_TARGET!
 
 :select_dht
 cls
@@ -229,11 +436,11 @@ echo.
 set "DHT_CHOICE="
 set /p "DHT_CHOICE=Enable DHT? (y/n/0) [n]: "
 
-if "!DHT_CHOICE!"=="0" goto select_steps
+if "!DHT_CHOICE!"=="0" goto !STEPS_BACK!
 if "!DHT_CHOICE!"=="" set "DHT_CHOICE=n"
 
-if /i "!DHT_CHOICE!"=="y" set "DHT_OPTION=-dht" & set "DHT_LABEL=ENABLED" & goto confirm
-set "DHT_OPTION=" & set "DHT_LABEL=DISABLED"
+if /i "!DHT_CHOICE!"=="y" set "DHT_OPTION=-dht" & set "DHT_LABEL=ENABLED" & goto !CONFIRM_TARGET!
+set "DHT_OPTION=" & set "DHT_LABEL=DISABLED" & goto !CONFIRM_TARGET!
 
 :confirm
 cls
@@ -242,7 +449,7 @@ echo %BLUE%   CONFIRMATION%RESET%
 echo %BLUE%========================================%RESET%
 echo.
 echo  !PATH_LABEL!: %CYAN%!ITEM_NAME!%RESET%
-echo  Path:   !MEDIA_PATH!
+powershell -NoProfile -Command "Write-Host ('  Path:   ' + $env:MEDIA_PATH)"
 echo  Type:   %CYAN%!TYPE_LABEL!%RESET%
 :: Check if query/season steps are selected (4=tmdb, 5=imdb, 6=describe)
 set "NEED_QUERY="
@@ -307,7 +514,7 @@ if "!YEAR_CHANGED!"=="1" if not "!QUERY_CHANGED!"=="1" if not "!DETECTED_YEAR!"=
 set "SEASON_OPTION="
 if "!SEASON_CHANGED!"=="1" set "SEASON_OPTION=-season !SEASON_NUM!"
 
-powershell -ExecutionPolicy Bypass -File "%~dp0ps\run.ps1" !TV_OPTION! !DHT_OPTION! !STEPS_OPTION! !QUERY_OPTION! !SEASON_OPTION! "!MEDIA_PATH!"
+powershell -ExecutionPolicy Bypass -Command "& '%~dp0ps\run.ps1' !TV_OPTION! !DHT_OPTION! !STEPS_OPTION! !QUERY_OPTION! !SEASON_OPTION! $env:MEDIA_PATH"
 set "EXIT_CODE=!errorlevel!"
 
 echo.
@@ -329,7 +536,9 @@ echo %BLUE%   WHAT NEXT?%RESET%
 echo %BLUE%========================================%RESET%
 echo.
 rem Detect torrent name for preview
-for /f "usebackq delims=" %%N in (`powershell -NoProfile -Command "if (Test-Path -LiteralPath '!MEDIA_PATH!' -PathType Leaf) { [System.IO.Path]::GetFileNameWithoutExtension('!MEDIA_PATH!') } else { Split-Path -Leaf '!MEDIA_PATH!' }"`) do set "FIN_TORRENT=%%N"
+powershell -NoProfile -Command "$p=$env:MEDIA_PATH; $n=if(Test-Path -LiteralPath $p -PathType Leaf){[IO.Path]::GetFileNameWithoutExtension($p)}else{Split-Path -Leaf $p}; [IO.File]::WriteAllText('%TMPPATH%',$n)"
+set /p FIN_TORRENT=<"%TMPPATH%"
+del "%TMPPATH%" 2>nul
 set "FIN_OUT=%~dp0output"
 echo  1) 📋 Preview upload request
 echo  2) 📝 Preview description
@@ -349,14 +558,8 @@ goto final_menu
 
 :preview_request
 cls
-set "PRV_FILE=!FIN_OUT!\!FIN_TORRENT!_upload_request.txt"
-if not exist "!PRV_FILE!" (
-    echo %RED%File not found: !PRV_FILE!%RESET%
-) else (
-    echo %CYAN%=== Upload Request ===%RESET%
-    echo.
-    type "!PRV_FILE!"
-)
+set "PRV_SUFFIX=_upload_request.txt"
+powershell -NoProfile -Command "$f=Join-Path $env:FIN_OUT ($env:FIN_TORRENT+$env:PRV_SUFFIX); if(-not(Test-Path -LiteralPath $f)){Write-Host ('File not found: '+$f) -ForegroundColor Red; exit 1}; Write-Host '=== Upload Request ===' -ForegroundColor Cyan; Write-Host ''; [Console]::OutputEncoding=[System.Text.Encoding]::UTF8; Get-Content -LiteralPath $f -Encoding UTF8"
 echo.
 echo  Press any key to return...
 pause > nul
@@ -365,24 +568,28 @@ goto final_menu
 
 :preview_desc
 cls
-set "PRV_FILE=!FIN_OUT!\!FIN_TORRENT!_torrent_description.bbcode"
-if not exist "!PRV_FILE!" (
-    echo %RED%File not found: !PRV_FILE!%RESET%
-    echo.
-    echo  Press any key to return...
-    pause > nul
-    choice /c yn /n /t 0 /d n > nul 2>&1
-    goto final_menu
-)
-powershell -ExecutionPolicy Bypass -File "%~dp0ps\preview_bbcode.ps1" "!PRV_FILE!"
+set "PRV_SUFFIX=_torrent_description.bbcode"
+powershell -NoProfile -Command "$f=Join-Path $env:FIN_OUT ($env:FIN_TORRENT+$env:PRV_SUFFIX); if(-not(Test-Path -LiteralPath $f)){Write-Host ('File not found: '+$f) -ForegroundColor Red; exit 1}" && goto preview_desc_ok
+echo.
+echo  Press any key to return...
+pause > nul
+choice /c yn /n /t 0 /d n > nul 2>&1
+goto final_menu
+:preview_desc_ok
+powershell -ExecutionPolicy Bypass -Command "& '%~dp0ps\preview_bbcode.ps1' (Join-Path $env:FIN_OUT ($env:FIN_TORRENT+$env:PRV_SUFFIX)); exit $LASTEXITCODE"
 if not !errorlevel! equ 2 goto preview_desc_done
 echo.
 echo  1) 🖼  Render with images
+echo  2) 📝 Edit in Notepad
 echo  0) 🔙 Back
-choice /c 10 /n /m "Select (0-1): "
-if errorlevel 2 goto preview_desc_done
+choice /c 120 /n /m "Select (0-2): "
+if errorlevel 3 goto final_menu
+if errorlevel 2 goto preview_desc_edit
 cls
-powershell -ExecutionPolicy Bypass -File "%~dp0ps\preview_bbcode.ps1" "!PRV_FILE!" -images
+powershell -ExecutionPolicy Bypass -Command "& '%~dp0ps\preview_bbcode.ps1' (Join-Path $env:FIN_OUT ($env:FIN_TORRENT+$env:PRV_SUFFIX)) -images"
+goto preview_desc_done
+:preview_desc_edit
+powershell -NoProfile -Command "Start-Process notepad.exe -ArgumentList (Join-Path $env:FIN_OUT ($env:FIN_TORRENT+$env:PRV_SUFFIX)) -Wait"
 :preview_desc_done
 echo.
 echo  Press any key to return...
@@ -392,14 +599,8 @@ goto final_menu
 
 :preview_mediainfo
 cls
-set "PRV_FILE=!FIN_OUT!\!FIN_TORRENT!_mediainfo.txt"
-if not exist "!PRV_FILE!" (
-    echo %RED%File not found: !PRV_FILE!%RESET%
-) else (
-    echo %CYAN%=== MediaInfo ===%RESET%
-    echo.
-    type "!PRV_FILE!"
-)
+set "PRV_SUFFIX=_mediainfo.txt"
+powershell -NoProfile -Command "$f=Join-Path $env:FIN_OUT ($env:FIN_TORRENT+$env:PRV_SUFFIX); if(-not(Test-Path -LiteralPath $f)){Write-Host ('File not found: '+$f) -ForegroundColor Red}else{Write-Host '=== MediaInfo ===' -ForegroundColor Cyan; Write-Host ''; Get-Content -LiteralPath $f}"
 echo.
 echo  Press any key to return...
 pause > nul
@@ -408,9 +609,9 @@ goto final_menu
 
 :do_upload
 echo.
-echo %CYAN%Starting upload for: !MEDIA_PATH!%RESET%
+powershell -NoProfile -Command "Write-Host $env:MEDIA_PATH -ForegroundColor Cyan"
 echo.
-call "%~dp0upload.bat" "!MEDIA_PATH!"
+powershell -ExecutionPolicy Bypass -Command "& '%~dp0ps\upload.ps1' $env:MEDIA_PATH"
 goto final_menu
 
 :choose_saved
@@ -432,9 +633,12 @@ set "path_choice="
 set /p "path_choice=Choose number (0 to cancel): "
 
 if "!path_choice!"=="0" goto menu
-set "MEDIA_PATH=!spath%path_choice%!"
-if "!MEDIA_PATH!"=="" goto invalid_saved
-goto validate_path
+:: Read selected saved path via PowerShell to preserve ! in paths
+powershell -NoProfile -Command "$f = '%SAVED_PATHS_FILE%'; $n = [int]$env:path_choice; $lines = [IO.File]::ReadAllLines($f); if ($n -ge 1 -and $n -le $lines.Count) { [IO.File]::WriteAllText('%TMPPATH%', $lines[$n-1]) } else { exit 1 }" || goto invalid_saved
+set /p MEDIA_PATH=<"%TMPPATH%"
+del "%TMPPATH%" 2>nul
+powershell -NoProfile -Command "if ($env:MEDIA_PATH) { exit 0 } else { exit 1 }" && goto validate_path
+goto invalid_saved
 
 :invalid_saved
 echo %RED%Invalid choice!%RESET%
@@ -455,12 +659,14 @@ echo %BLUE%========================================%RESET%
 echo.
 echo  1) 🧲 Upload torrent
 echo  2) 🔤 Upload subtitle
-echo  3) 📋 List last 10 uploads (API)
-echo  4) 🌐 List last 10 uploads (Web)
+echo  3) 📋 List my uploads (API)
+echo  4) 🌐 List my uploads (Web)
+echo  5) 📄 View upload logs
 echo  0) 🚪 Back to main menu
 echo.
-choice /c 12340 /n /m "Select (0-4): "
-if errorlevel 5 goto menu
+choice /c 123450 /n /m "Select (0-5): "
+if errorlevel 6 goto menu
+if errorlevel 5 goto view_upload_logs
 if errorlevel 4 goto list_uploads_web
 if errorlevel 3 goto list_uploads
 if errorlevel 2 goto subtitle_upload
@@ -479,21 +685,55 @@ goto upload_menu
 
 :list_uploads
 echo.
-powershell -ExecutionPolicy Bypass -File "%~dp0ps\list_uploads.ps1" 10
-echo.
-echo  Press any key to return to upload menu...
-pause > nul
-choice /c yn /n /t 0 /d n > nul 2>&1
+powershell -ExecutionPolicy Bypass -File "%~dp0ps\list_uploads.ps1"
 goto upload_menu
 
 :list_uploads_web
 echo.
-powershell -ExecutionPolicy Bypass -File "%~dp0ps\list_uploads_web.ps1" 10
+powershell -ExecutionPolicy Bypass -File "%~dp0ps\list_uploads_web.ps1"
+goto upload_menu
+
+:view_upload_logs
+cls
+echo %BLUE%========================================%RESET%
+echo %BLUE%   📄 UPLOAD LOGS%RESET%
+echo %BLUE%========================================%RESET%
 echo.
-echo  Press any key to return to upload menu...
+set "LOG_COUNT=0"
+for %%f in ("%~dp0output\*_upload.log") do (
+    set /a LOG_COUNT+=1
+    set "LOG_!LOG_COUNT!=%%f"
+    set "LOG_NAME_!LOG_COUNT!=%%~nf"
+    echo  !LOG_COUNT!^) %%~nf
+)
+if !LOG_COUNT! equ 0 (
+    echo  %YELLOW%No upload logs found.%RESET%
+    echo.
+    echo  Press any key to return...
+    pause > nul
+    choice /c yn /n /t 0 /d n > nul 2>&1
+    goto upload_menu
+)
+echo.
+echo  0) 🚪 Back
+echo.
+set "LOG_CHOICE="
+set /p "LOG_CHOICE=Select log: "
+if "!LOG_CHOICE!"=="0" goto upload_menu
+if "!LOG_CHOICE!"=="" goto upload_menu
+set /a LOG_IDX=LOG_CHOICE 2>nul
+if !LOG_IDX! lss 1 goto view_upload_logs
+if !LOG_IDX! gtr !LOG_COUNT! goto view_upload_logs
+set "SELECTED_LOG=!LOG_%LOG_IDX%!"
+cls
+echo %CYAN%=== !LOG_NAME_%LOG_IDX%! ===%RESET%
+echo.
+type "!SELECTED_LOG!"
+echo.
+echo  Press any key to return...
 pause > nul
 choice /c yn /n /t 0 /d n > nul 2>&1
-goto upload_menu
+goto view_upload_logs
 
 :subtitle_upload
 cls
@@ -592,12 +832,16 @@ echo  3) 🗑  Clear saved paths
 echo  4) 🧹 Clear output folder
 echo  5) 📝 Rename _description.txt to .bbcode
 echo  6) 🔧 Run install
-echo  7) ❓ Help
+echo  7) 🗑️ Run uninstall
+echo  8) ❓ Help
+echo  9) 📖 View README
 echo  0) 🚪 Back to main menu
 echo.
-choice /c 12345670 /n /m "Select (0-7): "
-if errorlevel 8 goto menu
-if errorlevel 7 goto maint_help
+choice /c 1234567890 /n /m "Select (0-9): "
+if errorlevel 10 goto menu
+if errorlevel 9 goto maint_readme
+if errorlevel 8 goto maint_help
+if errorlevel 7 goto maint_uninstall
 if errorlevel 6 goto maint_install
 if errorlevel 5 goto maint_rename_desc
 if errorlevel 4 goto maint_clear_output
@@ -672,10 +916,7 @@ echo.
 set "CLEAR_CONFIRM="
 set /p "CLEAR_CONFIRM=Delete all files in output folder? (y/n) [n]: "
 if /i not "!CLEAR_CONFIRM!"=="y" goto maintenance
-for %%F in ("!OUTPUT_DIR!\*") do (
-    if /i not "%%~nxF"==".last_path.txt" if /i not "%%~nxF"==".saved_paths.txt" if /i not "%%~nxF"==".gitkeep" del /q "%%F" 2>nul
-)
-for /d %%D in ("!OUTPUT_DIR!\*") do rmdir /s /q "%%D" 2>nul
+powershell -NoProfile -Command "Get-ChildItem -LiteralPath '%~dp0output' -File | Where-Object { $_.Name -notin '.last_path.txt','.saved_paths.txt','.gitkeep' } | Remove-Item -Force; Get-ChildItem -LiteralPath '%~dp0output' -Directory | Remove-Item -Recurse -Force"
 echo %GREEN%Output folder cleared.%RESET%
 timeout /t 2 > nul
 goto maintenance
@@ -696,14 +937,51 @@ pause > nul
 choice /c yn /n /t 0 /d n > nul 2>&1
 goto maintenance
 
-:maint_install
-echo.
-call "%~dp0install.bat"
+:maint_readme
+cls
+powershell -ExecutionPolicy Bypass -File "%~dp0ps\preview_bbcode.ps1" "%~dp0README.bbcode"
+if !errorlevel! equ 2 (
+    echo.
+    set "IMG_CHOICE="
+    set /p "IMG_CHOICE=Render with images? (y/n) [n]: "
+    if /i "!IMG_CHOICE!"=="y" (
+        cls
+        powershell -ExecutionPolicy Bypass -File "%~dp0ps\preview_bbcode.ps1" -images "%~dp0README.bbcode"
+    )
+)
 echo.
 echo  Press any key to return to maintenance...
 pause > nul
 choice /c yn /n /t 0 /d n > nul 2>&1
 goto maintenance
+
+:maint_install
+echo.
+call "%~dp0install.bat"
+:: Refresh PATH so newly installed tools (chafa, magick) are found without restarting
+for /f "tokens=2*" %%A in ('reg query "HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Environment" /v Path 2^>nul') do set "SYS_PATH=%%B"
+for /f "tokens=2*" %%A in ('reg query "HKCU\Environment" /v Path 2^>nul') do set "USR_PATH=%%B"
+set "PATH=!SYS_PATH!;!USR_PATH!;%LOCALAPPDATA%\Microsoft\WindowsApps"
+call set "PATH=!PATH!"
+echo.
+echo  Press any key to return to maintenance...
+pause > nul
+choice /c yn /n /t 0 /d n > nul 2>&1
+set "_GOTO_AFTER_CONFIG=maintenance" & goto read_config
+
+:maint_uninstall
+echo.
+call "%~dp0uninstall.bat"
+:: Refresh PATH after uninstall
+for /f "tokens=2*" %%A in ('reg query "HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Environment" /v Path 2^>nul') do set "SYS_PATH=%%B"
+for /f "tokens=2*" %%A in ('reg query "HKCU\Environment" /v Path 2^>nul') do set "USR_PATH=%%B"
+set "PATH=!SYS_PATH!;!USR_PATH!;%LOCALAPPDATA%\Microsoft\WindowsApps"
+call set "PATH=!PATH!"
+echo.
+echo  Press any key to return to maintenance...
+pause > nul
+choice /c yn /n /t 0 /d n > nul 2>&1
+set "_GOTO_AFTER_CONFIG=maintenance" & goto read_config
 
 :edit_torrent
 cls
@@ -789,6 +1067,11 @@ goto welcome
 :run_install
 echo.
 call "%~dp0install.bat"
+:: Refresh PATH so newly installed tools (chafa, magick) are found without restarting
+for /f "tokens=2*" %%A in ('reg query "HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Environment" /v Path 2^>nul') do set "SYS_PATH=%%B"
+for /f "tokens=2*" %%A in ('reg query "HKCU\Environment" /v Path 2^>nul') do set "USR_PATH=%%B"
+set "PATH=!SYS_PATH!;!USR_PATH!;%LOCALAPPDATA%\Microsoft\WindowsApps"
+call set "PATH=!PATH!"
 echo.
 set "MISSING="
 if not exist "%~dp0config.jsonc" set "MISSING=!MISSING! config.jsonc"
@@ -800,7 +1083,7 @@ echo %GREEN%Installation complete!%RESET%
 echo  Press any key to continue to menu...
 pause > nul
 choice /c yn /n /t 0 /d n > nul 2>&1
-goto menu
+goto read_config
 
 :install_fail
 echo %RED%Installation incomplete. Still missing:!MISSING!%RESET%

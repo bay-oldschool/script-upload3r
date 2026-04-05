@@ -45,9 +45,9 @@ if (-not $ApiKey) {
 
 $Name = $baseName
 $screens = @(
-    (Join-Path $OutDir "${Name}_screen01.jpg"),
-    (Join-Path $OutDir "${Name}_screen02.jpg"),
-    (Join-Path $OutDir "${Name}_screen03.jpg")
+    (Join-Path $OutDir "${Name}_screen01.png"),
+    (Join-Path $OutDir "${Name}_screen02.png"),
+    (Join-Path $OutDir "${Name}_screen03.png")
 )
 
 $found = $screens | Where-Object { Test-Path -LiteralPath $_ }
@@ -69,7 +69,7 @@ foreach ($f in $found) {
     Write-Host -NoNewline "Uploading: $filename ... "
 
     try {
-        $tmpFile = [System.IO.Path]::GetTempFileName() + ".jpg"
+        $tmpFile = [System.IO.Path]::GetTempFileName() + ".png"
         Copy-Item -LiteralPath $f -Destination $tmpFile -Force
         $result = & curl.exe -s -X POST "https://onlyimage.org/api/1/upload" `
             -H "X-API-Key: $ApiKey" `

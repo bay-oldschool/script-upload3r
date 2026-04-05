@@ -2,7 +2,7 @@ param(
     [Parameter(Mandatory)][string]$path,
     [Parameter(Mandatory)][string]$announceurl,
     [Parameter(Mandatory)][string]$outputfile,
-    [int]$piecelength = 22,
+    [int]$piecelength = 0,
     [int]$private = 1
 )
 
@@ -20,7 +20,6 @@ function Bencode-Bytes([byte[]]$b) {
     return [System.Text.Encoding]::UTF8.GetBytes("$($b.Length):") + $b
 }
 
-$pieceSize = [Math]::Pow(2, $piecelength)
 $sha1 = [System.Security.Cryptography.SHA1]::Create()
 
 $resolvedPath = (Resolve-Path -LiteralPath $path).Path.TrimEnd('\')
@@ -33,10 +32,42 @@ if ($isDir) {
     $resolvedPath = Split-Path $resolvedPath -Parent
 }
 
+# Auto-calculate optimal piece size if not specified
+# Target: ~1500 pieces, clamped between 16 KiB (2^14) and 32 MiB (2^25)
+if ($piecelength -eq 0) {
+    $totalSize = ($files | Measure-Object -Property Length -Sum).Sum
+    $raw = $totalSize / 1500
+    # Round up to nearest power of 2
+    $piecelength = [Math]::Max(14, [Math]::Min(25, [Math]::Ceiling([Math]::Log($raw, 2))))
+}
+$pieceSize = [long][Math]::Pow(2, $piecelength)
+
+# Display piece size
+$psLabel = if ($pieceSize -ge 1MB) { "$([Math]::Round($pieceSize / 1MB, 2)) MiB" } else { "$([Math]::Round($pieceSize / 1KB)) KiB" }
+Write-Host "Piece size: $psLabel" -ForegroundColor DarkGray
+
 # Build pieces by reading all files concatenated and hashing in piece-sized chunks
 $allPieces = [System.IO.MemoryStream]::new()
 $buffer = New-Object byte[] $pieceSize
 $bufferOffset = 0
+
+$totalBytes = ($files | Measure-Object -Property Length -Sum).Sum
+$totalPieces = [Math]::Ceiling($totalBytes / $pieceSize)
+$processedPieces = 0
+$processedBytes = 0
+$barWidth = 30
+$sw = [System.Diagnostics.Stopwatch]::StartNew()
+
+# ANSI colors and Unicode block chars (built at runtime — safe for PS5.1)
+$esc = [char]27
+$cBar   = "$esc[96m"   # cyan — filled bar
+$cDim   = "$esc[90m"   # dark gray — empty bar
+$cPct   = "$esc[93m"   # yellow — percentage
+$cInfo  = "$esc[37m"   # white — size/pieces
+$cDone  = "$esc[92m"   # green — complete
+$cReset = "$esc[0m"
+$blockFull  = [char]0x2588  # full block
+$blockEmpty = [char]0x2591  # light shade
 
 foreach ($file in $files) {
     $stream = [System.IO.File]::OpenRead($file.FullName)
@@ -44,10 +75,22 @@ foreach ($file in $files) {
         $bytesRead = $stream.Read($buffer, $bufferOffset, $pieceSize - $bufferOffset)
         if ($bytesRead -eq 0) { break }
         $bufferOffset += $bytesRead
+        $processedBytes += $bytesRead
         if ($bufferOffset -eq $pieceSize) {
             $hash = $sha1.ComputeHash($buffer, 0, $pieceSize)
             $allPieces.Write($hash, 0, $hash.Length)
             $bufferOffset = 0
+            $processedPieces++
+            # Update progress bar
+            $pct = [Math]::Min(100, [Math]::Floor($processedPieces * 100 / $totalPieces))
+            $filled = [Math]::Floor($pct * $barWidth / 100)
+            $empty = $barWidth - $filled
+            $barFill = "$blockFull" * $filled
+            $barRest = "$blockEmpty" * $empty
+            $sizeMB = [Math]::Round($processedBytes / 1MB, 1)
+            $totalMB = [Math]::Round($totalBytes / 1MB, 1)
+            $pctPad = "$pct".PadLeft(3)
+            Write-Host "`r  ${cBar}${barFill}${cDim}${barRest}${cReset} ${cPct}${pctPad}%${cReset}  ${cInfo}${sizeMB}/${totalMB} MB${cReset}  ${cDim}($processedPieces/$totalPieces pieces)${cReset}" -NoNewline
         }
     }
     $stream.Close()
@@ -57,7 +100,14 @@ foreach ($file in $files) {
 if ($bufferOffset -gt 0) {
     $hash = $sha1.ComputeHash($buffer, 0, $bufferOffset)
     $allPieces.Write($hash, 0, $hash.Length)
+    $processedPieces++
 }
+
+# Final progress
+$barFull = "$blockFull" * $barWidth
+$totalMB = [Math]::Round($totalBytes / 1MB, 1)
+$elapsed = [Math]::Round($sw.Elapsed.TotalSeconds, 1)
+Write-Host "`r  ${cDone}${barFull}${cReset} ${cDone}100%${cReset}  ${cInfo}${totalMB} MB${cReset}  ${cDim}($totalPieces pieces)${cReset}  ${cDone}${elapsed}s${cReset}"
 
 $piecesBytes = $allPieces.ToArray()
 $allPieces.Close()

@@ -402,9 +402,33 @@ $text = [regex]::Replace($text, '\[quote=([^\]]+)\]', {
 $text = $text -replace '\[quote\]', "`n${dimGray}--- Quote ---${reset}`n${dimGray}"
 $text = $text -replace '\[/quote\]', "${reset}`n${dimGray}--- /Quote ---${reset}`n"
 
-# Code
-$text = $text -replace '\[code\]', "`n${dimGray}--- Code ---${reset}`n"
-$text = $text -replace '\[/code\]', "`n${dimGray}--- /Code ---${reset}`n"
+# Code — dim content with indentation
+$text = [regex]::Replace($text, '\[code\](.*?)\[/code\]', {
+    param($m)
+    $codeBody = $m.Groups[1].Value.Trim("`n").Trim("`r")
+    $indented = ($codeBody -split "`n" | ForEach-Object { "  ${dimGray}$_${reset}" }) -join "`n"
+    "`n$indented`n"
+}, [System.Text.RegularExpressions.RegexOptions]::Singleline)
+
+# Lists — bullet points with indentation
+$text = [regex]::Replace($text, '\[list(?:=(\d+))?\](.*?)\[/list\]', {
+    param($m)
+    $ordered = $m.Groups[1].Value
+    $body = $m.Groups[2].Value
+    $items = [regex]::Matches($body, '\[\*\](.*?)(?=\[\*\]|\z)', [System.Text.RegularExpressions.RegexOptions]::Singleline)
+    $idx = 0
+    $lines = @()
+    foreach ($item in $items) {
+        $idx++
+        $content = $item.Groups[1].Value.Trim()
+        if ($ordered) {
+            $lines += "  ${yellow}${idx}.${reset} $content"
+        } else {
+            $lines += "  ${yellow}*${reset} $content"
+        }
+    }
+    "`n" + ($lines -join "`n") + "`n"
+}, [System.Text.RegularExpressions.RegexOptions]::Singleline)
 
 # Mediainfo block
 $text = $text -replace '\[mediainfo\]', "`n${cyan}--- MediaInfo ---${reset}`n"

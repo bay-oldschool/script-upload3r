@@ -22,6 +22,7 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $PSScriptRoot = Split-Path -Parent -Path (Split-Path -Parent -Path $MyInvocation.MyCommand.Definition)
 
 if (-not $torrent_id) {
@@ -71,49 +72,31 @@ if (-not $Username -or -not $Password) {
 
 $curName = "Torrent #${torrent_id}"
 $deleteReason = "Deleted by uploader"
+$webFallback = $false
 
 if ($force) {
-    Write-Host "Force mode: skipping fetch, deleting torrent #${torrent_id}..."
+    Write-Host "Force mode: skipping fetch, deleting torrent #${torrent_id}..." -ForegroundColor Cyan
 } else {
     # Fetch current torrent data via API
-    Write-Host "Fetching torrent #${torrent_id}..."
+    Write-Host "Fetching torrent #${torrent_id}..." -ForegroundColor Cyan
     $apiUrl = "${TrackerUrl}/api/torrents/${torrent_id}?api_token=${ApiKey}"
-    $fetchResp = & curl.exe -s -w "`n%{http_code}" $apiUrl
+    $fetchResp = & curl.exe -s --max-time 10 -w "`n%{http_code}" $apiUrl
     $fetchLines = $fetchResp -split "`n"
     $fetchCode  = $fetchLines[-1].Trim()
     $fetchBody  = ($fetchLines[0..($fetchLines.Count - 2)]) -join "`n"
 
-    if ($fetchCode -eq '404') {
-        Write-Host "Error: torrent #${torrent_id} not found." -ForegroundColor Red
-        exit 1
-    } elseif ($fetchCode -ne '200') {
-        Write-Host "Error: failed to fetch torrent (HTTP $fetchCode)" -ForegroundColor Red
-        exit 1
+    if ($fetchCode -eq '200') {
+        $torrentData = $fetchBody | ConvertFrom-Json
+        $attrs = $torrentData.attributes
+        $curName       = $attrs.name
+        $curCategory   = $attrs.category
+        $curType       = $attrs.type
+        $curResolution = $attrs.resolution
+    } else {
+        Write-Host "API fetch failed (HTTP $fetchCode), falling back to web..." -ForegroundColor Yellow
+        $webFallback = $true
+        $curCategory = ''; $curType = ''; $curResolution = ''
     }
-
-    $torrentData = $fetchBody | ConvertFrom-Json
-    $attrs = $torrentData.attributes
-
-    $curName       = $attrs.name
-    $curCategory   = $attrs.category
-    $curType       = $attrs.type
-    $curResolution = $attrs.resolution
-
-    Write-Host ""
-    Write-Host "Torrent to delete:"
-    Write-Host "  name:          $curName"
-    Write-Host "  category:      $curCategory"
-    Write-Host "  type:          $curType"
-    Write-Host "  resolution:    $curResolution"
-    Write-Host ""
-    $confirm = Read-Host "Are you sure you want to DELETE this torrent? (y/n) [y]"
-    if (-not $confirm) { $confirm = 'y' }
-    if ($confirm -ne 'y' -and $confirm -ne 'yes') {
-        Write-Host "Aborted."
-        exit 0
-    }
-    $deleteReason = Read-Host "Reason for deletion"
-    if (-not $deleteReason) { $deleteReason = "Deleted by uploader" }
 }
 
 # Web session login
@@ -122,7 +105,7 @@ $headerFile = [System.IO.Path]::GetTempFileName()
 
 try {
     Write-Host ""
-    Write-Host "Logging in to ${TrackerUrl}..."
+    Write-Host "Logging in to ${TrackerUrl}..." -ForegroundColor Cyan
 
     # Step 1: GET /login to get CSRF token, captcha, and hidden anti-bot fields
     $loginPage = (& curl.exe -s -c $cookieJar -b $cookieJar "${TrackerUrl}/login") -join "`n"
@@ -175,14 +158,51 @@ try {
         Write-Host "Error: login failed. Check username/password in config." -ForegroundColor Red
         exit 1
     }
-    Write-Host "Logged in. Redirect: $loginLocation"
+    Write-Host "Logged in. Redirect: $loginLocation" -ForegroundColor Green
 
     # Follow the redirect to finalize session
     & curl.exe -s -o NUL -c $cookieJar -b $cookieJar --max-time 15 $loginLocation
 
-    # Step 3: GET torrent page to get _token for CSRF
-    Write-Host "Fetching CSRF token..."
+    # Step 3: GET torrent page to get _token for CSRF and details
+    Write-Host "Fetching torrent page..." -ForegroundColor Cyan
     $torrentPage = (& curl.exe -s -c $cookieJar -b $cookieJar --max-time 30 "${TrackerUrl}/torrents/${torrent_id}") -join "`n"
+
+    # If API failed, scrape torrent details from the web page
+    if ($webFallback -and -not $force) {
+        if ($torrentPage -match '<h1\s+class="torrent__name">\s*(.*?)\s*</h1>') {
+            $curName = [System.Net.WebUtility]::HtmlDecode($matches[1]).Trim()
+        }
+        if ($torrentPage -match 'class="torrent__category-link"[^>]*>\s*([^<]+)') {
+            $curCategory = $matches[1].Trim()
+        }
+        if ($torrentPage -match 'class="torrent__type-link"[^>]*>\s*([^<]+)') {
+            $curType = $matches[1].Trim()
+        }
+        if ($torrentPage -match 'class="torrent__resolution-link"[^>]*>\s*([^<]+)') {
+            $curResolution = $matches[1].Trim()
+        }
+    }
+
+    if (-not $force) {
+        Write-Host ""
+        Write-Host "Torrent to delete:" -ForegroundColor Cyan
+        Write-Host "  name:          " -NoNewline; Write-Host $curName -ForegroundColor Green
+        if ($curCategory) { Write-Host "  category:      " -NoNewline; Write-Host $curCategory -ForegroundColor Green }
+        if ($curType) { Write-Host "  type:          " -NoNewline; Write-Host $curType -ForegroundColor Green }
+        if ($curResolution) { Write-Host "  resolution:    " -NoNewline; Write-Host $curResolution -ForegroundColor Green }
+        Write-Host ""
+        Write-Host "  (enter 'c' at any prompt to cancel)" -ForegroundColor DarkGray
+        $confirm = Read-Host "Are you sure you want to DELETE this torrent? (y/n) [y]"
+        if ($confirm -eq 'c') { Write-Host "Cancelled." -ForegroundColor Yellow; exit 0 }
+        if (-not $confirm) { $confirm = 'y' }
+        if ($confirm -ne 'y' -and $confirm -ne 'yes') {
+            Write-Host "Aborted." -ForegroundColor Yellow
+            exit 0
+        }
+        $deleteReason = Read-Host "Reason for deletion"
+        if ($deleteReason -eq 'c') { Write-Host "Cancelled." -ForegroundColor Yellow; exit 0 }
+        if (-not $deleteReason) { $deleteReason = "Deleted by uploader" }
+    }
 
     $formToken = ''
     if ($torrentPage -match 'name="_token"\s*value="([^"]+)"') {
@@ -195,7 +215,7 @@ try {
     }
 
     # Step 4: POST with _method=DELETE (requires type, id, title, message fields)
-    Write-Host "Deleting torrent #${torrent_id}..."
+    Write-Host "Deleting torrent #${torrent_id}..." -ForegroundColor Cyan
 
     $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
     $tempName = [System.IO.Path]::GetTempFileName()

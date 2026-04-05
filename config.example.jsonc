@@ -1,43 +1,84 @@
 {
-  // Tracker settings
-  "tracker_url": "https://example.com",
-  "announce_url": "https://example.com/announce/YOUR_ANNOUNCE_KEY",
-  "api_key": "YOUR_API_KEY",
-  // Tracker login credentials (required for edit.ps1 and delete.ps1)
-  "username": "",
-  "password": "",
+    // ─── Tracker ───────────────────────────────────────────────
+    "tracker_url": "https://example.com",
+    "announce_url": "https://example.com/announce/YOUR_ANNOUNCE_KEY",
+    "api_key": "YOUR_API_KEY",
+    "username": "",
+    "password": "",
 
-  // Upload defaults
-  // Name convention: 1 = UNIT3D format (spaces, normalized), 0 = raw torrent name
-  "name_convention": 1,
-  "type_id": 3,
-  "resolution_id": 2,
-  "tmdb": 0,
-  "imdb": 0,
-  "personal": 0,
-  "anonymous": 0,
-  "description": "",
-  // Subtitle upload defaults (language ID 15 = Bulgarian)
-  "subtitle_language_id": 15,
+    // ─── Upload Defaults ───────────────────────────────────────
+    // Name convention: 1 = UNIT3D format (spaces, normalized), 0 = raw torrent name
+    "name_convention": 1,
+    "type_id": 3,
+    "resolution_id": 2,
+    "tmdb": 0,
+    "imdb": 0,
+    "personal": 0,
+    "anonymous": 0,
+    "description": "",
 
-  // TMDB + Google Translate
-  "tmdb_api_key": "YOUR_TMDB_API_KEY",
-  "google_api_key": "YOUR_GOOGLE_API_KEY",
-  "translate_lang": "bg",
+    // ─── Subtitle Defaults ─────────────────────────────────────
+    // Language ID 15 = Bulgarian
+    "subtitle_language_id": 15,
 
-  // AI description provider: "gemini" or "ollama"
-  "ai_provider": "gemini",
-  "gemini_api_key": "YOUR_GEMINI_API_KEY",
-  "gemini_model": "gemini-2.5-flash-lite",
-  "ollama_model": "gemma3:4b",
-  "ollama_url": "",
+    // ─── TMDB & Google Translate ───────────────────────────────
+    "tmdb_api_key": "YOUR_TMDB_API_KEY",
+    "google_api_key": "YOUR_GOOGLE_API_KEY",
+    "translate_lang": "bg",
 
-  // OMDB API (fallback for RT ratings when MDBList has none)
-  "omdb_api_key": "YOUR_OMDB_API_KEY",
+    // ─── AI Providers ──────────────────────────────────────────
+    // Active provider: "gemini", "ollama", "groq", "grok", "cerebras", "sambanova", "openrouter", or "huggingface"
+    "ai_provider": "gemini",
 
-  // MDBList API (for Rotten Tomatoes ratings, free key from mdblist.com)
-  "mdblist_api_key": "YOUR_MDBLIST_API_KEY",
+    "gemini_api_key": "YOUR_GEMINI_API_KEY",
+    "gemini_model": "gemini-2.5-flash",
 
-  // Screenshot hosting
-  "onlyimage_api_key": "YOUR_ONLYIMAGE_API_KEY"
+    "ollama_model": "gemma3:4b",
+    "ollama_url": "",
+
+    "groq_api_key": "YOUR_GROQ_API_KEY",
+    "groq_model": "qwen/qwen3-32b",
+
+    "grok_api_key": "YOUR_GROK_API_KEY",
+    "grok_model": "grok-3-mini",
+
+    "cerebras_api_key": "YOUR_CEREBRAS_API_KEY",
+    "cerebras_model": "llama-3.3-70b",
+
+    "sambanova_api_key": "YOUR_SAMBANOVA_API_KEY",
+    "sambanova_model": "Meta-Llama-3.1-70B-Instruct",
+
+    "openrouter_api_key": "YOUR_OPENROUTER_API_KEY",
+    "openrouter_model": "qwen/qwen3-32b:free",
+
+    "huggingface_api_key": "YOUR_HUGGINGFACE_API_KEY",
+    "huggingface_model": "Qwen/Qwen2.5-72B-Instruct",
+
+    // ─── Ratings APIs ──────────────────────────────────────────
+    // MDBList: Rotten Tomatoes ratings (free key from mdblist.com)
+    "mdblist_api_key": "YOUR_MDBLIST_API_KEY",
+    // OMDB: fallback for RT ratings when MDBList has none
+    "omdb_api_key": "YOUR_OMDB_API_KEY",
+
+    // ─── IGDB (Twitch) ────────────────────────────────────────
+    // Register at dev.twitch.tv/console
+    "twitch_client_id": "YOUR_TWITCH_CLIENT_ID",
+    "twitch_client_secret": "YOUR_TWITCH_CLIENT_SECRET",
+
+    // ─── Screenshot Hosting ────────────────────────────────────
+    "onlyimage_api_key": "YOUR_ONLYIMAGE_API_KEY",
+
+    // ─── UI Settings ───────────────────────────────────────────
+    // Show ASCII logo in main menu: 1 = show, 0 = hide
+    "show_logo": 1,
+    // Logo source: "text" = colored ASCII from logo.txt, "image" = render logo.png
+    "logo_source": "image",
+    // Display mode for "image" source: "ansi" = half-blocks, "block" = shade chars (░▒▓█), "ascii" = ASCII chars, "direct" = Sixel
+    "logo_display": "direct",
+    // Logo width in characters (all image display modes)
+    "logo_width": 40,
+    // Logo colors (256-color codes, "text" source only): letters, dark shading, light shading
+    "logo_color_letters": 160,
+    "logo_color_dark": 210,
+    "logo_color_light": 95
 }

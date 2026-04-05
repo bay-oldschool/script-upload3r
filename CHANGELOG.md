@@ -1,5 +1,81 @@
 # Changelog
 
+## v5.0.0 — 2026-04-05
+
+### New Features
+- **Game pipeline** (`run_game.ps1`): full pipeline for game torrents — IGDB search, AI description, screenshots, torrent creation, and upload with game-specific categories (18–23)
+- **Software pipeline** (`run_software.ps1`): full pipeline for software torrents — AI description, screenshots, torrent creation, and upload with software categories (24–26)
+- **IGDB search script** (`igdb.ps1`): search IGDB via Twitch OAuth for game metadata — trailers, cover art, interactive result selection, PC platform prioritization, and IGDB link in descriptions
+- **Game/software AI descriptions**: dedicated system prompts (`ai_system_prompt_game.txt`, `ai_system_prompt_software.txt`) with genre-appropriate templates
+- **Multi-provider AI support**: added Groq, Grok, Cerebras, SambaNova, OpenRouter, and HuggingFace as AI providers alongside Gemini and Ollama
+- **Poster support**: prompt for poster (file path or URL) before game/software pipeline; upload local posters to onlyimage.org; pass as torrent cover in UNIT3D upload API; AI provides fallback poster/screenshot URLs when IGDB data is missing
+- **Torrent cover upload**: upload torrent cover image via web session after API upload (for categories that don't auto-pull from TMDB/IGDB)
+- **Torrent progress bar**: colored ANSI progress bar with Unicode block characters during torrent piece hashing
+- **Auto piece size**: automatically calculate optimal piece size (~1500 pieces, 16 KiB–32 MiB cap), matching GG Bot Upload Assistant conventions
+- **Configurable ASCII logo**: main menu header loaded from `shared/logo.txt` with 3 configurable colors (letters, dark, light) via 256-color codes
+- **Image logo modes**: render `shared/logo.png` as ANSI half-blocks, shade blocks (░▒▓█), ASCII characters, or Sixel direct output via chafa or ImageMagick
+- **Interactive install/uninstall**: install and uninstall scripts show menu with single-keypress selection — Enter=all, number=single tool, 0=exit; shows disk space per tool
+- **Uninstall script** (`uninstall.ps1` / `uninstall.bat`): interactive tool removal with same UI as install
+- **View README**: option 8 in maintenance menu to preview `README.bbcode` in terminal
+- **Upload request file picker in edit flow**: select from output dir / browse / skip before prompting for fields; auto-detect and apply description + mediainfo files
+- **Torrent list actions**: clickable edit/delete/subtitle icons via OSC 8 links in torrent listings; pagination with load-more for both API and web listings
+- **Upload logs viewer**: view upload logs from upload submenu
+- **Edit-in-notepad**: option to open description in Notepad from description preview
+
+### Improvements
+- **Config restructured**: organized into labeled sections (Tracker, Upload Defaults, Subtitle, TMDB, AI Providers, Ratings, IGDB, Screenshots, UI)
+- **Smarter search queries**: strip resolution (`1080p`, `720p`, etc.), source (`WEBRip`, `BluRay`, etc.), and codec tags from TMDB/IMDB search queries across all scripts — applied consistently via cross-script rule
+- **Skip poster download**: movie, TV, and game torrents skip poster download/upload since the site pulls covers automatically from TMDB/IGDB
+- **PNG screenshots**: switched from JPG to PNG format for lossless quality
+- **Randomized screenshot timestamps**: spread to 10/35/65% to avoid duplicates near scene boundaries
+- **AI description word limit**: reduced from 200–400 to 150–250 words for more concise descriptions
+- **Poster skip-on-enter**: instant single-keypress selection for poster image choice, 0 to skip
+- **PATH refresh**: run.bat refreshes PATH from registry after install/uninstall; expands registry variables (`%SystemRoot%`) to prevent losing system32
+- **Chafa support**: added chafa as primary image renderer with ImageMagick fallback for logo display
+- **Cache tool availability**: cache chafa/magick detection to avoid slow `where` lookups on every menu loop
+- **BBCode preview**: added `[list]`/`[*]` rendering with bullet/numbered items and `[code]` block rendering with dim indented content
+- **Post-process AI output**: convert `**text**` to `[b]text[/b]`, strip markdown list markers from AI responses
+- **Clean game/software header**: strip repack/scene/platform tags, restore version dots in torrent names
+- **Consolidated ai_call.ps1**: manual JSON escaping for all providers to preserve emoji surrogate pairs
+- **Validate image URLs**: HEAD request check before including poster/screenshot URLs in descriptions
+- **OMDB poster fallback**: fetch poster from OMDB when TMDB has no results
+- **Torrent name override**: prompt to override torrent name before category selection in upload flow
+- **Skip type/resolution pickers**: game and software uploads skip irrelevant type/resolution selection
+- **Cancel support extended**: cancel (`c`) added to subtitle, delete, and edit scripts
+- **Emoji strings externalized**: install/uninstall emoji strings stored in external UTF-8 files (PS5.1 safe)
+- **ffmpeg source switched**: install now downloads ffmpeg from GitHub CDN (BtbN) for faster downloads
+- **Config reloads after install**: logo settings reload when returning to menu after install/uninstall
+
+### Bug Fixes
+- **PATH refresh losing system32**: expanding registry `%SystemRoot%` variables prevents losing system32 from PATH after install
+- **`-steps` parameter**: accept unquoted comma-separated values by using `[string[]]` parameter type
+- **techPart extraction**: fallback regex when torrent name has no year or season tag (extract from resolution/source tag)
+- **EnTitle in description.ps1**: keep full release info (resolution, codec, source, group) — only replace dots/underscores with spaces
+- **Cyrillic/emoji in upload request preview**: read files as UTF-8 and set console encoding to UTF-8
+- **Year in query override**: strip year from `-query` override in tmdb.ps1, imdb.ps1, and describe.ps1 to avoid duplicate year in search
+- **Interactive description file pick**: track override with flag to prevent Livewire re-fetch from overwriting user selection
+- **CMD delayed expansion**: fix `!` characters in paths being corrupted by delayed expansion
+- **Delete.ps1 404 fallback**: fall back to web scraping when API returns 404
+- **$PSScriptRoot scoping**: renamed to `$RootDir` in list scripts to fix variable scoping issue
+- **Apostrophe in filenames**: use `$env:` variables instead of direct interpolation in PowerShell commands
+- **Bracketed tags**: strip `[SKIDROW]` and similar scene tags from game/software names
+
+### New Config Keys
+- `twitch_client_id` / `twitch_client_secret` — IGDB access via Twitch OAuth ([dev.twitch.tv/console](https://dev.twitch.tv/console))
+- `groq_api_key` / `groq_model` — [Groq](https://console.groq.com/) AI provider
+- `grok_api_key` / `grok_model` — [Grok](https://x.ai/) AI provider
+- `cerebras_api_key` / `cerebras_model` — [Cerebras](https://cloud.cerebras.ai/) AI provider
+- `sambanova_api_key` / `sambanova_model` — [SambaNova](https://cloud.sambanova.ai/) AI provider
+- `openrouter_api_key` / `openrouter_model` — [OpenRouter](https://openrouter.ai/) AI provider
+- `huggingface_api_key` / `huggingface_model` — [HuggingFace](https://huggingface.co/) AI provider
+- `show_logo` — show/hide ASCII logo in main menu (1/0)
+- `logo_source` — `"text"` (colored ASCII) or `"image"` (render logo.png)
+- `logo_display` — image display mode: `"ansi"`, `"block"`, `"ascii"`, or `"direct"` (Sixel)
+- `logo_width` — logo width in characters for image modes
+- `logo_color_letters` / `logo_color_dark` / `logo_color_light` — 256-color codes for text logo
+
+---
+
 ## v4.2.0 — 2026-03-27
 
 ### New Features

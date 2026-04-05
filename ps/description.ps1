@@ -9,6 +9,10 @@
     Path to JSONC config file (default: ./config.jsonc).
 .PARAMETER tv
     Switch to upload as TV show (category_id=12).
+.PARAMETER game
+    Switch to upload as game.
+.PARAMETER software
+    Switch to upload as software.
 #>
 param(
     [Parameter(Mandatory = $true, Position = 0)]
@@ -17,7 +21,13 @@ param(
     [Parameter(Position = 1)]
     [string]$configfile,
 
-    [switch]$tv
+    [switch]$tv,
+
+    [switch]$game,
+
+    [switch]$software,
+
+    [string]$poster
 )
 
 $ErrorActionPreference = 'Stop'
@@ -42,13 +52,14 @@ $TorrentName = $baseName
 $GeminiFile      = Join-Path $OutDir "${TorrentName}_description.bbcode"
 $ImdbFile        = Join-Path $OutDir "${TorrentName}_imdb.txt"
 $TmdbFile        = Join-Path $OutDir "${TorrentName}_tmdb.txt"
+$IgdbFile        = Join-Path $OutDir "${TorrentName}_igdb.txt"
 $ScreensFile     = Join-Path $OutDir "${TorrentName}_screens.txt"
 $TorrentDescFile = Join-Path $OutDir "${TorrentName}_torrent_description.bbcode"
 $MediainfoFile   = Join-Path $OutDir "${TorrentName}_mediainfo.txt"
 $RequestFile     = Join-Path $OutDir "${TorrentName}_upload_request.txt"
 
 # Build title header from directory name (avoids encoding issues with special chars)
-$EnTitle = $TorrentName -replace '[._]', ' ' -replace '(?i)\bSEASON\s+\d+\b', '' -replace ' - [Ss]\d{2}.*', '' -replace '\b[Ss]\d{2}.*', '' -replace '\b(19|20)\d{2}\b.*', '' -replace ' - WEBDL.*', '' -replace ' - WEB-DL.*', '' -replace '[\s([]+$', ''
+$EnTitle = $TorrentName -replace '[._]', ' ' -replace '(?i)\bSEASON\s+\d+\b', '' -replace ' - [Ss]\d{2}.*', '' -replace '\b[Ss]\d{2}.*', '' -replace '\b(19|20)\d{2}\b.*', '' -replace '(?i)\b(2160|1080|720|480|360)[pi]\b.*', '' -replace '(?i)\b(WEBRip|WEB-DL|WEBDL|BluRay|BDRip|BRRip|HDRip|HDTV|DVDRip|REMUX|WEB)\b.*', '' -replace '[\s([]+$', ''
 $yearMatch = [regex]::Match($TorrentName, '\b(19|20)\d{2}\b')
 $Year = if ($yearMatch.Success) { $yearMatch.Value } else { $null }
 
@@ -65,6 +76,20 @@ if (-not $Year -and (Test-Path -LiteralPath $TmdbFile)) {
         ForEach-Object { $_ -replace '^\xEF\xBB\xBF', '' } |
         Where-Object { $_ -match '^\[1\]' } | Select-Object -First 1
     if ($tmdbFirst -and $tmdbFirst -match '\((\d{4})\)') { $Year = $matches[1] }
+}
+# Fallback: get year from IGDB file first result
+if (-not $Year -and (Test-Path -LiteralPath $IgdbFile)) {
+    $igdbFirst = Get-Content -LiteralPath $IgdbFile -Encoding UTF8 |
+        ForEach-Object { $_ -replace '^\xEF\xBB\xBF', '' } |
+        Where-Object { $_ -match '^\[1\]' } | Select-Object -First 1
+    if ($igdbFirst -and $igdbFirst -match '\((\d{4})\)') { $Year = $matches[1] }
+}
+# Fallback: extract year from AI-generated description
+if (-not $Year -and (Test-Path -LiteralPath $GeminiFile)) {
+    $descContent = Get-Content -LiteralPath $GeminiFile -Encoding UTF8 -TotalCount 10
+    foreach ($dl in $descContent) {
+        if ($dl -match '\((\d{4})\)') { $Year = $matches[1]; break }
+    }
 }
 if (-not $Year) { $Year = '????' }
 
@@ -151,11 +176,87 @@ if (Test-Path -LiteralPath $TmdbFile) {
     }
 }
 
+# Fallback: read title and cover from IGDB file (for game uploads)
+if (-not $TmdbEnTitle -and (Test-Path -LiteralPath $IgdbFile)) {
+    $igdbContent = Get-Content -LiteralPath $IgdbFile -Encoding UTF8
+    $igdbFirstLine = $igdbContent | Where-Object { $_ -match '^\[1\]' } | Select-Object -First 1
+    if ($igdbFirstLine -and $igdbFirstLine -match '^\[1\]\s+(.+?)\s+\(\d{4}\)$') { $TmdbEnTitle = $matches[1] }
+    if (-not $PosterUrl) {
+        $coverLine = $igdbContent | Where-Object { $_ -match '^\s+Cover:' } | Select-Object -First 1
+        if ($coverLine) { $PosterUrl = ($coverLine -replace '^\s+Cover:\s*', '').Trim() }
+    }
+}
+
+# Override poster with user-provided value (URL or local file path)
+if ($poster) {
+    if ($poster -match '^https?://') {
+        $PosterUrl = $poster
+    } elseif (Test-Path -LiteralPath $poster -PathType Leaf) {
+        # Upload local file to onlyimage.org
+        $cfg = (Get-Content -LiteralPath $configfile | Where-Object { $_ -notmatch '^\s*//' }) -join "`n" | ConvertFrom-Json
+        $imgKey = $cfg.onlyimage_api_key
+        if ($imgKey) {
+            Write-Host -NoNewline "Uploading poster: $(Split-Path -Leaf $poster) ... "
+            try {
+                $tmpPoster = [System.IO.Path]::GetTempFileName() + [System.IO.Path]::GetExtension($poster)
+                Copy-Item -LiteralPath $poster -Destination $tmpPoster -Force
+                $result = & curl.exe -s -X POST "https://onlyimage.org/api/1/upload" `
+                    -H "X-API-Key: $imgKey" `
+                    -F "source=@$tmpPoster" `
+                    -F "format=json"
+                Remove-Item -LiteralPath $tmpPoster -ErrorAction SilentlyContinue
+                $json = $result | ConvertFrom-Json
+                $imgUrl = if ($json.image -and $json.image.url) { $json.image.url } elseif ($json.url) { $json.url } else { $null }
+                if ($json.status_code -eq 200 -and $imgUrl) {
+                    Write-Host $imgUrl
+                    $PosterUrl = $imgUrl
+                } else {
+                    $errTxt = if ($json.status_txt) { $json.status_txt } else { 'unknown error' }
+                    Write-Host "FAILED ($errTxt)" -ForegroundColor Yellow
+                }
+            } catch {
+                Write-Host "FAILED ($($_.Exception.Message))" -ForegroundColor Yellow
+            }
+        } else {
+            Write-Host "Warning: 'onlyimage_api_key' not configured, cannot upload poster." -ForegroundColor Yellow
+        }
+    } else {
+        Write-Host "Warning: poster file not found: $poster" -ForegroundColor Yellow
+    }
+}
+
+# Fallback: read AI-suggested poster URL if no poster set yet
+if (-not $PosterUrl) {
+    $aiPosterFile = Join-Path -Path $OutDir -ChildPath "${baseName}_poster_url.txt"
+    if (Test-Path -LiteralPath $aiPosterFile) {
+        $PosterUrl = ([System.IO.File]::ReadAllText($aiPosterFile, [System.Text.Encoding]::UTF8)).Trim()
+        if ($PosterUrl) { Write-Host "Using AI-suggested poster: $PosterUrl" -ForegroundColor Cyan }
+    }
+}
+
 $enHeader = if ($TmdbEnTitle -and $TmdbEnTitle -notmatch '[\p{IsCyrillic}]') { $TmdbEnTitle } else { $EnTitle }
+$yearSuffix = if ($Year -and $Year -ne '????') { " (${Year})" } else { '' }
 if ($BgTitle -and $BgTitle -ne $enHeader) {
-    $Header = "[size=26][b]${enHeader} (${Year}) / ${BgTitle} (${Year})[/b][/size]"
+    $Header = "[size=26][b]${enHeader}${yearSuffix} / ${BgTitle}${yearSuffix}[/b][/size]"
 } else {
-    $Header = "[size=26][b]${enHeader} (${Year})[/b][/size]"
+    $Header = "[size=26][b]${enHeader}${yearSuffix}[/b][/size]"
+}
+
+# Override header for games/software with clean name + version
+if ($game.IsPresent -or $software.IsPresent) {
+    $swName = $TorrentName
+    # Remove bracketed tags like [SKIDROW], (GOG), {PLAZA}
+    $swName = $swName -replace '\s*[\[\(\{][^\]\)\}]+[\]\)\}]\s*', ' '
+    $swName = $swName -replace '[\s_]', '.'
+    $swName = $swName -replace '(?i)[-\.]by[-\.].+$', ''
+    $swName = $swName -replace '(?i)[-\.](RePack|Repack|Portable|Cracked|Patched|PreActivated|Activated)[-\.]?', ''
+    $swName = $swName -replace '(?i)[-\.](CODEX|PLAZA|GOG|FLT|SKIDROW|RELOADED|RUNE|DARKSiDERS|TiNYiSO|EMPRESS|SiMPLEX|DOGE|Razor1911|HI2U|ANOMALY|P2P|KaOs|FitGirl|DODI|XFORCE|TNT|AMPED|RECOiL|FOSI|CYGiSO|ECZ|MAGNiTUDE|SSQ)$', ''
+    $swName = $swName -replace '(?i)[-\.](WinAll|Multilingual|x64|x86|Win64|Win32|macOS|Linux)[-\.]?', ''
+    $swName = $swName -replace '[._]', ' '
+    $swName = [regex]::Replace($swName, '(?<=\d) (?=\d)', '.')
+    $swName = ($swName -replace '\s+', ' ').Trim()
+    $swHeader = if ($yearSuffix) { "${swName}${yearSuffix}" } else { $swName }
+    $Header = "[size=26][b]${swHeader}[/b][/size]"
 }
 
 # Build description body
@@ -269,6 +370,27 @@ if (Test-Path -LiteralPath $ImdbFile) {
     }
 }
 
+# Read IGDB ID and URL from IGDB file if available (for game uploads)
+$Igdb = 0
+$IgdbUrl = ''
+if (Test-Path -LiteralPath $IgdbFile) {
+    $igdbContent3 = Get-Content -LiteralPath $IgdbFile -Encoding UTF8
+    $igdbIdLine = $igdbContent3 | Where-Object { $_ -match '^\s+IGDB ID:' } | Select-Object -First 1
+    if ($igdbIdLine) { $Igdb = ($igdbIdLine -replace '^\s+IGDB ID:\s*', '').Trim() }
+    $igdbUrlLine = $igdbContent3 | Where-Object { $_ -match '^\s+IGDB URL:' } | Select-Object -First 1
+    if ($igdbUrlLine) { $IgdbUrl = ($igdbUrlLine -replace '^\s+IGDB URL:\s*', '').Trim() }
+}
+
+# Fallback: extract trailers from IGDB file (for game uploads)
+if ($imdbTrailers.Count -eq 0 -and (Test-Path -LiteralPath $IgdbFile)) {
+    $igdbTrailerLines = Get-Content -LiteralPath $IgdbFile -Encoding UTF8 | Where-Object { $_ -match '^\s+Trailer:' }
+    foreach ($tl in $igdbTrailerLines) {
+        if ($tl -match '^\s+Trailer:\s+(.+?):\s+(https://\S+)') {
+            $imdbTrailers += @{ name = $matches[1]; url = $matches[2] }
+        }
+    }
+}
+
 # Insert runtime and countries after genre line
 if ($imdbRuntime -or $imdbCountries) {
     $e_clock = [char]::ConvertFromUtf32(0x23F0)    # alarm clock
@@ -318,22 +440,15 @@ if ($imdbTrailers.Count -gt 0) {
     $tLinks = ($imdbTrailers | ForEach-Object { "[url=$($_.url)]$($_.name)[/url]" }) -join ' | '
     $trailerLine = "${e_trailer} [b]Trailer:[/b] ${tLinks}"
     $descLines = $Description -split "`n"
-    # Find insertion point: last RT line, or IMDB rating line, or genre line
+    # Find insertion point: last of RT line, rating line (/10 or /100), or genre line
     $insertIdx = -1
+    $bgGenre2 = [char]0x0416 + [char]0x0430 + [char]0x043D + [char]0x0440  # Жанр
+    $bgRating = [char]0x0420 + [char]0x0435 + [char]0x0439 + [char]0x0442 + [char]0x0438 + [char]0x043D + [char]0x0433  # Рейтинг
     for ($i = 0; $i -lt $descLines.Count; $i++) {
-        if ($descLines[$i] -match '\[b\].*RT\s|RT\s.*\[/b\]') { $insertIdx = $i }
-    }
-    if ($insertIdx -lt 0) {
-        for ($i = 0; $i -lt $descLines.Count; $i++) {
-            if ($descLines[$i] -match '\[b\].{0,15}:\[/b\].*\d+/10') { $insertIdx = $i; break }
-        }
-    }
-    if ($insertIdx -lt 0) {
-        $bgGenre2 = [char]0x0416 + [char]0x0430 + [char]0x043D + [char]0x0440  # Жанр
-        for ($i = 0; $i -lt $descLines.Count; $i++) {
-            if ($descLines[$i] -match '\[b\].{0,15}(Genres|Genre|Runtime|Countries)' -or $descLines[$i].Contains($bgGenre2)) { $insertIdx = $i }
-            elseif ($insertIdx -ge 0) { break }
-        }
+        $dl = $descLines[$i]
+        if ($dl -match '\[b\].*RT\s|RT\s.*\[/b\]') { $insertIdx = $i }
+        elseif ($dl -match '\[b\].{0,15}:\[/b\].*\d+/\d+' -or $dl.Contains($bgRating)) { $insertIdx = $i }
+        elseif ($dl -match '\[b\].{0,15}(Genres|Genre|Runtime|Countries)' -or $dl.Contains($bgGenre2)) { if ($insertIdx -lt 0) { $insertIdx = $i } }
     }
     if ($insertIdx -ge 0) {
         $newLines = @()
@@ -348,6 +463,51 @@ if ($imdbTrailers.Count -gt 0) {
     } else {
         $Description = $trailerLine + "`n`n" + $Description
     }
+}
+
+# Insert IGDB link above genre line (for game uploads)
+if ($IgdbUrl -and $Igdb) {
+    $e_link = [char]::ConvertFromUtf32(0x1F517)
+    $igdbLine = "${e_link} [b]IGDB:[/b] [url=${IgdbUrl}]${Igdb}[/url]"
+    $descLines = $Description -split "`n"
+    $bgGenre3 = [char]0x0416 + [char]0x0430 + [char]0x043D + [char]0x0440  # Жанр
+    $igdbInserted = $false
+    $newLines = @()
+    for ($k = 0; $k -lt $descLines.Count; $k++) {
+        if (-not $igdbInserted -and ($descLines[$k] -match '\[b\].{0,15}(Genres|Genre)' -or $descLines[$k].Contains($bgGenre3))) {
+            $newLines += $igdbLine
+            $igdbInserted = $true
+        }
+        $newLines += $descLines[$k]
+    }
+    if (-not $igdbInserted) { $newLines = @($igdbLine, '') + $newLines }
+    $Description = $newLines -join "`n"
+}
+
+# Validate image URLs: must be http(s) and return a valid response
+function Test-ImageUrl($url) {
+    if (-not $url -or $url -notmatch '^https?://') { return $false }
+    # Reject incomplete TMDB URLs (no image path after base)
+    if ($url -match 'image\.tmdb\.org/t/p/[^/]+/?$') { return $false }
+    try {
+        $req = [System.Net.HttpWebRequest]::Create($url)
+        $req.Method = 'HEAD'
+        $req.Timeout = 5000
+        $req.AllowAutoRedirect = $false
+        $resp = $req.GetResponse()
+        $ok = $resp.StatusCode -eq 'OK'
+        $resp.Close()
+        return $ok
+    } catch { return $false }
+}
+
+if ($PosterUrl -and -not (Test-ImageUrl $PosterUrl)) {
+    Write-Host "Warning: Poster URL not reachable, skipping: $PosterUrl" -ForegroundColor Yellow
+    $PosterUrl = ''
+}
+if ($BannerUrl -and -not (Test-ImageUrl $BannerUrl)) {
+    Write-Host "Warning: Banner URL not reachable, skipping: $BannerUrl" -ForegroundColor Yellow
+    $BannerUrl = ''
 }
 
 # Build BBCode image tags, wrapping in [url] if TMDB page URL is available
@@ -446,15 +606,33 @@ if ($PosterUrl) {
 }
 
 # Add screenshots
+$screenUrls = @()
 if (Test-Path -LiteralPath $ScreensFile) {
-    $urls = Get-Content -LiteralPath $ScreensFile -Encoding UTF8
-    $imgs = "[center]"
-    foreach ($url in $urls) {
-        $url = $url.Trim().TrimStart([char]0xFEFF)
-        if ($url) { $imgs += "[url=${url}][img=400]${url}[/img][/url]" }
+    $screenUrls = @(Get-Content -LiteralPath $ScreensFile -Encoding UTF8 | ForEach-Object { $_.Trim().TrimStart([char]0xFEFF) } | Where-Object { $_ })
+}
+# Fallback: use IGDB screenshots for game uploads
+if ($screenUrls.Count -eq 0 -and (Test-Path -LiteralPath $IgdbFile)) {
+    $screenUrls = @(Get-Content -LiteralPath $IgdbFile -Encoding UTF8 | Where-Object { $_ -match '^\s+Screenshot:' } | ForEach-Object { ($_ -replace '^\s+Screenshot:\s*', '').Trim() } | Where-Object { $_ })
+}
+# Fallback: use AI-suggested screenshots
+$aiScreenFile = Join-Path $OutDir "${TorrentName}_ai_screenshots.txt"
+if ($screenUrls.Count -eq 0 -and (Test-Path -LiteralPath $aiScreenFile)) {
+    $screenUrls = @(Get-Content -LiteralPath $aiScreenFile -Encoding UTF8 | ForEach-Object { $_.Trim() } | Where-Object { $_ })
+}
+if ($screenUrls.Count -gt 0) {
+    $validScreens = @()
+    foreach ($url in $screenUrls) {
+        if (Test-ImageUrl $url) { $validScreens += $url }
+        else { Write-Host "Warning: Screenshot URL not reachable, skipping: $url" -ForegroundColor Yellow }
     }
-    $imgs += "[/center]"
-    $Description += "`n`n${imgs}"
+    if ($validScreens.Count -gt 0) {
+        $imgs = "[center]"
+        foreach ($url in $validScreens) {
+            $imgs += "[url=${url}][img=400]${url}[/img][/url]"
+        }
+        $imgs += "[/center]"
+        $Description += "`n`n${imgs}"
+    }
 }
 
 # Add keyword hashtags when no AI description (AI descriptions already contain hashtags)
@@ -539,6 +717,51 @@ if ($tv.IsPresent) {
         $SeasonNumber = [int]$matches[1]
     }
     Write-Host "TV mode -> category_id=$CategoryId, season=$SeasonNumber, episode=$EpisodeNumber"
+}
+
+# Override category for game uploads
+if ($game.IsPresent) {
+    $gameCat = $categories | Where-Object { $_.type -eq 'game' } | Select-Object -First 1
+    if ($gameCat) { $CategoryId = $gameCat.id }
+    # Auto-detect platform from dirname
+    $nl = $TorrentName.ToLower()
+    if ($nl -match 'mac|osx|macos') {
+        $macCat = $categories | Where-Object { $_.name -eq 'Games/Mac' }
+        if ($macCat) { $CategoryId = $macCat.id }
+    } elseif ($nl -match '\.iso|pc\.iso') {
+        $isoCat = $categories | Where-Object { $_.name -eq 'Games/PC ISO' }
+        if ($isoCat) { $CategoryId = $isoCat.id }
+    } elseif ($nl -match 'ps[345]|playstation') {
+        $psCat = $categories | Where-Object { $_.name -eq 'Games/PS' }
+        if ($psCat) { $CategoryId = $psCat.id }
+    } elseif ($nl -match 'xbox') {
+        $xbCat = $categories | Where-Object { $_.name -eq 'Games/Xbox' }
+        if ($xbCat) { $CategoryId = $xbCat.id }
+    } elseif ($nl -match 'switch|nsw|wii|3ds|console') {
+        $conCat = $categories | Where-Object { $_.name -eq 'Games/Console' }
+        if ($conCat) { $CategoryId = $conCat.id }
+    } else {
+        # Default: PC Rip for most scene releases
+        $pcCat = $categories | Where-Object { $_.name -eq 'Games/PC Rip' }
+        if ($pcCat) { $CategoryId = $pcCat.id }
+    }
+    Write-Host "Game mode -> category_id=$CategoryId"
+}
+
+# Override category for software uploads
+if ($software.IsPresent) {
+    $nl = $TorrentName.ToLower()
+    if ($nl -match 'mac|osx|macos') {
+        $macCat = $categories | Where-Object { $_.name -eq 'Programs/Mac' }
+        if ($macCat) { $CategoryId = $macCat.id }
+    } elseif ($nl -match '\.iso') {
+        $isoCat = $categories | Where-Object { $_.name -eq 'Programs/PC ISO' }
+        if ($isoCat) { $CategoryId = $isoCat.id }
+    } else {
+        $otherCat = $categories | Where-Object { $_.name -eq 'Programs/Other' }
+        if ($otherCat) { $CategoryId = $otherCat.id }
+    }
+    Write-Host "Software mode -> category_id=$CategoryId"
 }
 
 # Detect resolution from directory name
@@ -634,11 +857,17 @@ if (Test-Path -LiteralPath $ImdbFile) {
     if ($imdbLine) { $Imdb = ($imdbLine -replace '^IMDB ID:\s*tt', '').Trim() }
 }
 
+# IGDB ID and URL already read earlier
+
 # Build upload name: UNIT3D convention or raw torrent name based on config
 $cfgForName = (Get-Content -LiteralPath $configfile | Where-Object { $_ -notmatch '^\s*//' }) -join "`n" | ConvertFrom-Json
 $nameConvention = if ($cfgForName.PSObject.Properties['name_convention']) { $cfgForName.name_convention } else { 1 }
 
-if ($nameConvention -eq 1) {
+if ($game.IsPresent -or $software.IsPresent) {
+    # Games/Software: use raw torrent name, just replace dots/underscores
+    $UploadName = $TorrentName -replace '[._]', ' ' -replace '\s+', ' ' -replace '--+', '-'
+    $UploadName = $UploadName.Trim()
+} elseif ($nameConvention -eq 1) {
     # UNIT3D format: "Title Year Edition Resolution Source Codec Audio-Group"
     # Preserve channel notation (e.g. DDP5.1, 7.1, 5.1) and codec versions (H.264, H.265) before replacing dots
     $placeholder = [string][char]0x00B7
@@ -651,6 +880,10 @@ if ($nameConvention -eq 1) {
         $techPart = $matches[2].Trim()
     } elseif ($n_up -match '(?i)\b[Ss]\d{2}(?:\s*-\s*[Ss]\d{2}|[Ee]\d+)?\s+(.+)$') {
         $techPart = $matches[1].Trim()
+    } elseif ($n_up -match '(?i)\b((2160|1080|720|480|360)[pi]\b.+)$') {
+        $techPart = $matches[1].Trim()
+    } elseif ($n_up -match '(?i)\b(WEBRip|WEB-DL|WEBDL|BluRay|BDRip|BRRip|HDRip|HDTV|DVDRip|REMUX)\b(.*)$') {
+        $techPart = ($matches[1] + $matches[2]).Trim()
     }
     # Strip brackets/parentheses attached to text (scene tags like -iKA[EtHD]) — remove entirely
     $techPart = $techPart -replace '(?<=\w)\[([^\]]+)\]', ''
@@ -729,11 +962,11 @@ if ($nameConvention -eq 1) {
     # Raw torrent name (no formatting)
     $UploadName = $TorrentName -replace '--+', '-'
 }
-if ($BgTitle -and $BgTitle -ne $EnTitle -and $BgTitle -ne $TmdbEnTitle) {
+if (-not $game.IsPresent -and -not $software.IsPresent -and $BgTitle -and $BgTitle -ne $EnTitle -and $BgTitle -ne $TmdbEnTitle) {
     $UploadName = "$UploadName / $BgTitle ($Year)"
 }
 
-# Detect Bulgarian audio/subtitles from MediaInfo sections
+# Detect Bulgarian audio/subtitles from MediaInfo sections (skip for games)
 $bgAudio = $false
 $bgSubs = $false
 if (Test-Path -LiteralPath $MediainfoFile) {
@@ -789,10 +1022,14 @@ $requestLines = @(
     "resolution_id=$ResolutionId"
     "tmdb=$Tmdb"
     "imdb=$Imdb"
+    "igdb=$Igdb"
     "personal=$Personal"
     "anonymous=$Anonymous"
     "season_number=$SeasonNumber"
     "episode_number=$EpisodeNumber"
+    "poster=$PosterUrl"
+    "description_file=$TorrentDescFile"
+    "mediainfo_file=$MediainfoFile"
 )
 [System.IO.File]::WriteAllText($RequestFile, ($requestLines -join "`n") + "`n", $utf8NoBom)
 Write-Host "Upload request saved to: $RequestFile"

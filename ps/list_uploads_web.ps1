@@ -17,9 +17,8 @@ param(
 
 $ErrorActionPreference = 'Stop'
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
-$PSScriptRoot = Split-Path -Parent -Path (Split-Path -Parent -Path $MyInvocation.MyCommand.Definition)
-
-if (-not $configfile) { $configfile = Join-Path $PSScriptRoot "config.jsonc" }
+$RootDir = Split-Path -Parent -Path (Split-Path -Parent -Path $MyInvocation.MyCommand.Definition)
+if (-not $configfile) { $configfile = Join-Path $RootDir "config.jsonc" }
 
 if (-not (Test-Path -LiteralPath $configfile)) {
     Write-Host "Error: config file '$configfile' not found." -ForegroundColor Red
@@ -84,89 +83,69 @@ try {
 
     Write-Host "Logged in." -ForegroundColor Green
 
-    # Step 3: Fetch uploads page
-    Write-Host "Fetching last $count uploads by '$Username'..." -ForegroundColor Cyan
-    $uploadsUrl = "${TrackerUrl}/users/${Username}/uploads"
-    $uploadsPage = (& curl.exe -s -b $cookieJar --max-time 30 $uploadsUrl) -join "`n"
-
-    # Step 4: Parse torrent rows from HTML
-    # UNIT3D uses <tr> rows in the uploads table, each containing torrent data
-    $rowMatches = [regex]::Matches($uploadsPage, '<tr[^>]*>.*?</tr>', ([System.Text.RegularExpressions.RegexOptions]::Singleline))
-
     function HtmlDecode($s) {
         $s -replace '<[^>]+>', '' -replace '&amp;', '&' -replace '&lt;', '<' -replace '&gt;', '>' -replace '&#039;', "'" -replace '&quot;', '"' -replace '&nbsp;', ' '
     }
 
-    $seen = @{}
-    $torrents = @()
-    foreach ($row in $rowMatches) {
-        $html = $row.Value
+    function ParsePage($pageHtml, [hashtable]$seen) {
+        $rowMatches = [regex]::Matches($pageHtml, '<tr[^>]*>.*?</tr>', ([System.Text.RegularExpressions.RegexOptions]::Singleline))
+        $results = @()
+        foreach ($row in $rowMatches) {
+            $html = $row.Value
+            if ($html -notmatch 'href="[^"]*?/torrents/(\d+)"') { continue }
+            $id = $matches[1]
+            if ($seen.ContainsKey($id)) { continue }
+            $seen[$id] = $true
 
-        # Must contain a torrent link
-        if ($html -notmatch 'href="[^"]*?/torrents/(\d+)"') { continue }
-        $id = $matches[1]
-        if ($seen.ContainsKey($id)) { continue }
-        $seen[$id] = $true
-
-        # Name from torrent link
-        $name = ''
-        if ($html -match '<a[^>]*href="[^"]*?/torrents/' + $id + '"[^>]*>\s*(.*?)\s*</a>') {
-            $name = (HtmlDecode $matches[1]).Trim()
-        }
-        if (-not $name) { continue }
-
-        # Date from <time> tag
-        $date = ''
-        if ($html -match '<time[^>]*datetime="([^"]+)"') {
-            $dt = $matches[1]
-            if ($dt.Length -ge 10) { $date = $dt.Substring(0, 10) }
-        }
-
-        # Size from user-uploads__size td (e.g. "6.13 GiB", "456.78 MiB")
-        $size = ''
-        if ($html -match 'user-uploads__size[^>]*>\s*([\d.]+\s*(?:TiB|GiB|MiB|KiB|B))\s*<') {
-            $size = $matches[1]
-        }
-
-        # Personal release from user-uploads__personal-release td
-        $isPersonal = $false
-        $perMatch = [regex]::Match($html, 'user-uploads__personal-release[\s\S]*?title="([^"]+)"')
-        if ($perMatch.Success) {
-            $isPersonal = ($perMatch.Groups[1].Value -eq 'Personal release')
-        }
-
-        # Approved status from user-uploads__status td
-        $approvedStatus = 'unknown'
-        $statusMatch = [regex]::Match($html, 'user-uploads__status[\s\S]*?title="([^"]+)"')
-        if ($statusMatch.Success) {
-            $statusTitle = $statusMatch.Groups[1].Value.Trim()
-            $approvedStatus = switch -Wildcard ($statusTitle) {
-                'Approved'  { 'approved' }
-                'Pending'   { 'pending' }
-                'Rejected'  { 'rejected' }
-                'Postponed' { 'postponed' }
-                default     { 'unknown' }
+            $name = ''
+            if ($html -match '<a[^>]*href="[^"]*?/torrents/' + $id + '"[^>]*>\s*(.*?)\s*</a>') {
+                $name = (HtmlDecode $matches[1]).Trim()
             }
+            if (-not $name) { continue }
+
+            $date = ''
+            if ($html -match '<time[^>]*datetime="([^"]+)"') {
+                $dt = $matches[1]
+                if ($dt.Length -ge 10) { $date = $dt.Substring(0, 10) }
+            }
+
+            $size = ''
+            if ($html -match 'user-uploads__size[^>]*>\s*([\d.]+\s*(?:TiB|GiB|MiB|KiB|B))\s*<') {
+                $size = $matches[1]
+            }
+
+            $isPersonal = $false
+            $perMatch = [regex]::Match($html, 'user-uploads__personal-release[\s\S]*?title="([^"]+)"')
+            if ($perMatch.Success) {
+                $isPersonal = ($perMatch.Groups[1].Value -eq 'Personal release')
+            }
+
+            $approvedStatus = 'unknown'
+            $statusMatch = [regex]::Match($html, 'user-uploads__status[\s\S]*?title="([^"]+)"')
+            if ($statusMatch.Success) {
+                $statusTitle = $statusMatch.Groups[1].Value.Trim()
+                $approvedStatus = switch -Wildcard ($statusTitle) {
+                    'Approved'  { 'approved' }
+                    'Pending'   { 'pending' }
+                    'Rejected'  { 'rejected' }
+                    'Postponed' { 'postponed' }
+                    default     { 'unknown' }
+                }
+            }
+
+            $results += @{ id = $id; name = $name; date = $date; size = $size; isPersonal = $isPersonal; approvedStatus = $approvedStatus }
         }
-
-        $torrents += @{ id = $id; name = $name; date = $date; size = $size; isPersonal = $isPersonal; approvedStatus = $approvedStatus }
-        if ($torrents.Count -ge $count) { break }
-    }
-
-    if ($torrents.Count -eq 0) {
-        Write-Host "No uploads found." -ForegroundColor Yellow
-        exit 0
+        $results
     }
 
     # Load icons from external UTF-8 file
-    $iconsFile = Join-Path $PSScriptRoot "shared\icons.jsonc"
+    $iconsFile = Join-Path $RootDir "shared\icons.jsonc"
     $icons = ([System.IO.File]::ReadAllText($iconsFile, [System.Text.Encoding]::UTF8) -split "`n" | Where-Object { $_ -notmatch '^\s*//' }) -join "`n" | ConvertFrom-Json
 
     $esc = [char]27
 
     # Visual width: emoji/surrogates = 2 cols, flag pairs = 2 cols, variation selectors/ZWJ = 0
     function IsRegionalIndicator([string]$s, [int]$i) {
-        # Regional indicator: surrogate pair U+D83C + U+DDE6..U+DDFF
         if (($i + 1) -lt $s.Length -and [int][char]$s[$i] -eq 0xD83C) {
             $lo = [int][char]$s[$i + 1]
             return ($lo -ge 0xDDE6 -and $lo -le 0xDDFF)
@@ -178,7 +157,6 @@ try {
         $len = 0
         for ($i = 0; $i -lt $s.Length; $i++) {
             $cp = [int][char]$s[$i]
-            # Flag emoji: two regional indicator pairs = 1 flag = 2 display cols
             if ((IsRegionalIndicator $s $i) -and ($i + 3) -lt $s.Length -and (IsRegionalIndicator $s ($i + 2))) {
                 $len += 2; $i += 3; continue
             }
@@ -218,47 +196,112 @@ try {
     }
 
     # Calculate NAME column width from terminal width
-    # Fixed cols: ID(6) + sp(1) + NAME + sp(1) + SIZE(10) + sp(1) + DATE(10) + sp(1) + PER(5) + APPROVED(8) = 43
+    # Fixed cols: ID(6) + sp(1) + NAME + sp(1) + SIZE(10) + sp(1) + DATE(10) + sp(1) + PR(2) + 2sp + AP(2) + 2sp + ED(2) + 2sp + DL(2) + 2sp + SB(2) = 48
     $tw = 120
     try { $tw = [Console]::WindowWidth } catch { }
     if (-not $tw -or $tw -lt 60) { try { $tw = $Host.UI.RawUI.WindowSize.Width } catch { } }
     if (-not $tw -or $tw -lt 60) { $tw = 120 }
-    $nameW = $tw - 43
+    $nameW = $tw - 48
     if ($nameW -lt 20) { $nameW = 20 }
     $nameDash = '-' * $nameW
 
-    Write-Host ""
-    Write-Host ("{0,-6} {1,-$nameW} {2,-10} {3,-10} {4,-4} {5}" -f "ID", "NAME", "SIZE", "DATE", "PER", "APPROVED") -ForegroundColor DarkGray
-    Write-Host ("{0,-6} {1,-$nameW} {2,-10} {3,-10} {4,-4} {5}" -f "------", $nameDash, "----------", "----------", "----", "--------") -ForegroundColor DarkGray
+    $cmdDir = Join-Path ([System.IO.Path]::GetTempPath()) "upload3r_actions"
 
-    foreach ($t in $torrents) {
-        $id   = $t.id
-        $name = Truncate-Name $t.name $nameW
-        $size = $t.size
-        $date = $t.date
-        $per  = if ($t.isPersonal) { $icons.personal_yes } else { $icons.personal_no }
-        $appr = switch ($t.approvedStatus) {
-            'approved'  { $icons.approved }
-            'pending'   { $icons.pending }
-            'rejected'  { $icons.rejected }
-            'postponed' { $icons.postponed }
-            default     { '' }
+    $hasOsc8 = $false
+    if (Get-Process WindowsTerminal -ErrorAction SilentlyContinue) { $hasOsc8 = $true }
+    if ($env:WT_SESSION) { $hasOsc8 = $true }
+    if ($env:TERM_PROGRAM -match 'vscode|iTerm') { $hasOsc8 = $true }
+
+    function Show-TorrentRows($list) {
+        # Create/refresh temp .cmd wrappers
+        if (Test-Path $cmdDir) { Remove-Item -LiteralPath $cmdDir -Recurse -Force }
+        New-Item -ItemType Directory -Path $cmdDir -Force | Out-Null
+        foreach ($t in $list) {
+            $tid = $t.id
+            foreach ($act in @('edit','delete','subtitle')) {
+                $cmdFile = Join-Path $cmdDir "${act}_${tid}.cmd"
+                $line = "@powershell -ExecutionPolicy Bypass -File `"$RootDir\ps\${act}.ps1`" $tid -configfile `"$configfile`""
+                [System.IO.File]::WriteAllText($cmdFile, "${line}`r`npause`r`n", [System.Text.Encoding]::ASCII)
+            }
         }
-        # Pad name manually using visual width
-        $vl = Get-VLen $name
-        $namePad = $name + (' ' * ($nameW - $vl))
-        $idPad  = ("{0,-6}" -f $id)
-        $idCell = "${esc}]8;;${TrackerUrl}/torrents/${id}${esc}\${idPad}${esc}]8;;${esc}\"
-        # Emoji takes 2 display columns but PS counts 1; pad with 3 spaces
-        $perCell = "$per   "
-        Write-Host ("${idCell} ${namePad} {0,-10} {1,-10} ${perCell}{2}" -f $size, $date, $appr)
+
+        Write-Host ""
+        Write-Host ("{0,-6} {1,-$nameW} {2,-10} {3,-10} {4}  {5}  {6}  {7}  {8}" -f "ID", "NAME", "SIZE", "DATE", "PR", "AP", "ED", "DL", "SB") -ForegroundColor DarkGray
+        Write-Host ("{0,-6} {1,-$nameW} {2,-10} {3,-10} {4}  {5}  {6}  {7}  {8}" -f "------", $nameDash, "----------", "----------", "--", "--", "--", "--", "--") -ForegroundColor DarkGray
+
+        foreach ($t in $list) {
+            $id   = $t.id
+            $name = Truncate-Name $t.name $nameW
+            $size = $t.size
+            $date = $t.date
+            $per  = if ($t.isPersonal) { $icons.personal_yes } else { $icons.personal_no }
+            $appr = switch ($t.approvedStatus) {
+                'approved'  { $icons.approved }
+                'pending'   { $icons.pending }
+                'rejected'  { $icons.rejected }
+                'postponed' { $icons.postponed }
+                default     { '' }
+            }
+            $vl = Get-VLen $name
+            $namePad = $name + (' ' * ($nameW - $vl))
+            $idPad  = ("{0,-6}" -f $id)
+            $idCell = "${esc}]8;;${TrackerUrl}/torrents/${id}${esc}\${idPad}${esc}]8;;${esc}\"
+            $editCmd   = "file:///" + ((Join-Path $cmdDir "edit_${id}.cmd") -replace '\\', '/')
+            $delCmd    = "file:///" + ((Join-Path $cmdDir "delete_${id}.cmd") -replace '\\', '/')
+            $subCmd    = "file:///" + ((Join-Path $cmdDir "subtitle_${id}.cmd") -replace '\\', '/')
+            $editIcon  = "${esc}]8;;${editCmd}${esc}\$($icons.edit)${esc}]8;;${esc}\"
+            $delIcon   = "${esc}]8;;${delCmd}${esc}\$($icons.delete)${esc}]8;;${esc}\"
+            $subIcon   = "${esc}]8;;${subCmd}${esc}\$($icons.subtitle)${esc}]8;;${esc}\"
+            Write-Host ("${idCell} ${namePad} {0,-10} {1,-10} {2}  {3}  ${editIcon}  ${delIcon}  ${subIcon}" -f $size, $date, $per, $appr)
+        }
+
+        Write-Host ""
+        Write-Host "Total: $($list.Count) torrent(s)" -ForegroundColor Cyan
     }
 
-    Write-Host ""
-    Write-Host "Total: $($torrents.Count) torrent(s)" -ForegroundColor Cyan
-    Write-Host ""
-    Write-Host "All uploads: " -NoNewline
-    Write-Host $uploadsUrl -ForegroundColor Blue
+    # Pagination loop — fetch page by page, show "load more" / "back"
+    $uploadsUrl = "${TrackerUrl}/users/${Username}/uploads"
+    $page = 1
+    $allTorrents = @()
+    $seen = @{}
+    $hasMore = $true
+
+    while ($true) {
+        Write-Host "Fetching page $page..." -ForegroundColor Cyan
+        $pageUrl = "${uploadsUrl}?page=${page}"
+        $uploadsPage = (& curl.exe -s -b $cookieJar --max-time 30 $pageUrl) -join "`n"
+
+        $pageTorrents = @(ParsePage $uploadsPage $seen)
+        if ($pageTorrents.Count -eq 0) {
+            $hasMore = $false
+            if ($allTorrents.Count -eq 0) {
+                Write-Host "No uploads found." -ForegroundColor Yellow
+                break
+            }
+            Write-Host "No more uploads." -ForegroundColor Yellow
+        } else {
+            $allTorrents += $pageTorrents
+        }
+
+        Show-TorrentRows $allTorrents
+
+        Write-Host ""
+        Write-Host "All uploads: " -NoNewline
+        Write-Host $uploadsUrl -ForegroundColor Blue
+        Write-Host ""
+
+        if ($hasMore) {
+            Write-Host "  1) Load more    0) Back" -ForegroundColor DarkGray
+        } else {
+            Write-Host "  0) Back" -ForegroundColor DarkGray
+        }
+        $key = [Console]::ReadKey($true).KeyChar
+        if ($key -eq '0') { break }
+        if ($key -eq '1' -and $hasMore) {
+            $page++
+            continue
+        }
+    }
 
 } finally {
     Remove-Item -LiteralPath $cookieJar -ErrorAction SilentlyContinue

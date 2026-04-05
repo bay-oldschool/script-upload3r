@@ -94,6 +94,20 @@ if (-not (Test-Path -LiteralPath $RequestFile)) {
     Write-Host "Error: request file '$RequestFile' not found. Run the pipeline first." -ForegroundColor Red
     exit 1
 }
+
+# Read request file early to get file paths before validation
+$reqData = @{}
+foreach ($line in Get-Content -LiteralPath $RequestFile -Encoding UTF8) {
+    if ($line -match '^([^=]+)=(.*)$') {
+        $reqData[$matches[1]] = $matches[2]
+    }
+}
+
+# Override description/mediainfo paths from request file if not explicitly provided
+if (-not $descriptionfile -and $reqData['description_file'] -and (Test-Path -LiteralPath $reqData['description_file'])) {
+    $TorrentDescFile = $reqData['description_file']
+}
+
 if (-not (Test-Path -LiteralPath $TorrentFile)) {
     Write-Host "Error: torrent file '$TorrentFile' not found. Run the pipeline first." -ForegroundColor Red
     exit 1
@@ -103,24 +117,18 @@ if (-not (Test-Path -LiteralPath $TorrentDescFile)) {
     exit 1
 }
 
-# Read request file (key=value format)
-$reqData = @{}
-foreach ($line in Get-Content -LiteralPath $RequestFile -Encoding UTF8) {
-    if ($line -match '^([^=]+)=(.*)$') {
-        $reqData[$matches[1]] = $matches[2]
-    }
-}
-
 $UploadName    = $reqData['name']
 $CategoryId    = $reqData['category_id']
 $TypeId        = $reqData['type_id']
 $ResolutionId  = $reqData['resolution_id']
 $Tmdb          = $reqData['tmdb']
 $Imdb          = $reqData['imdb']
+$Igdb          = $reqData['igdb']
 $Personal      = $reqData['personal']
 $Anonymous     = $reqData['anonymous']
 $SeasonNumber  = $reqData['season_number']
 $EpisodeNumber = $reqData['episode_number']
+$PosterUrl     = $reqData['poster']
 
 # Read categories from categories.jsonc
 $CategoriesFile = Join-Path $PSScriptRoot "shared\categories.jsonc"
@@ -137,6 +145,17 @@ $categories = @($allCategories | Where-Object { $_.type -eq $catType })
 
 if (-not $auto.IsPresent) {
     Write-Host "  (enter 'c' at any prompt to cancel)" -ForegroundColor DarkGray
+
+    # Torrent name override
+    Write-Host ""
+    Write-Host "Torrent name:" -ForegroundColor Cyan
+    Write-Host "  $UploadName" -ForegroundColor Green
+    $nameInput = Read-Host "Override name (Enter to keep)"
+    if ($nameInput -eq 'c') { Write-Host "Cancelled." -ForegroundColor Yellow; exit 2 }
+    if ($nameInput) {
+        $UploadName = $nameInput
+        Write-Host "  -> $UploadName" -ForegroundColor Green
+    }
 
     # Show category picker with default preselected
     Write-Host ""
@@ -161,56 +180,59 @@ if (-not $auto.IsPresent) {
         Write-Host "Invalid choice, using default: $($categories[$defaultIdx].name)" -ForegroundColor Yellow
     }
 
-    # Read types from types.jsonc and show picker
-    $TypesFile = Join-Path $PSScriptRoot "shared\types.jsonc"
-    $allTypes = ([System.IO.File]::ReadAllText($TypesFile, $utf8NoBom) -split "`n" | Where-Object { $_ -notmatch '^\s*//' }) -join "`n" | ConvertFrom-Json
+    # Type and resolution pickers — skip for games and software
+    if ($catType -ne 'game' -and $catType -ne 'software') {
+        # Read types from types.jsonc and show picker
+        $TypesFile = Join-Path $PSScriptRoot "shared\types.jsonc"
+        $allTypes = ([System.IO.File]::ReadAllText($TypesFile, $utf8NoBom) -split "`n" | Where-Object { $_ -notmatch '^\s*//' }) -join "`n" | ConvertFrom-Json
 
-    Write-Host ""
-    Write-Host "Select type:" -ForegroundColor Cyan
-    $defaultIdx = 0
-    for ($i = 0; $i -lt $allTypes.Count; $i++) {
-        $marker = ''
-        if ([string]$allTypes[$i].id -eq $TypeId) {
-            $marker = ' *'
-            $defaultIdx = $i
+        Write-Host ""
+        Write-Host "Select type:" -ForegroundColor Cyan
+        $defaultIdx = 0
+        for ($i = 0; $i -lt $allTypes.Count; $i++) {
+            $marker = ''
+            if ([string]$allTypes[$i].id -eq $TypeId) {
+                $marker = ' *'
+                $defaultIdx = $i
+            }
+            Write-Host "  $($i+1)) $($allTypes[$i].name) (id=$($allTypes[$i].id))${marker}"
         }
-        Write-Host "  $($i+1)) $($allTypes[$i].name) (id=$($allTypes[$i].id))${marker}"
-    }
-    $typeChoice = Read-Host "Type [$($defaultIdx + 1)]"
-    if ($typeChoice -eq 'c') { Write-Host "Cancelled." -ForegroundColor Yellow; exit 2 }
-    if (-not $typeChoice) { $typeChoice = $defaultIdx + 1 }
-    $typeIdx = [int]$typeChoice - 1
-    if ($typeIdx -ge 0 -and $typeIdx -lt $allTypes.Count) {
-        $TypeId = [string]$allTypes[$typeIdx].id
-        Write-Host "Selected: $($allTypes[$typeIdx].name) (type_id=$TypeId)" -ForegroundColor Green
-    } else {
-        Write-Host "Invalid choice, using default: $($allTypes[$defaultIdx].name)" -ForegroundColor Yellow
-    }
-
-    # Read resolutions from resolutions.jsonc and show picker
-    $ResFile = Join-Path $PSScriptRoot "shared\resolutions.jsonc"
-    $allRes = ([System.IO.File]::ReadAllText($ResFile, $utf8NoBom) -split "`n" | Where-Object { $_ -notmatch '^\s*//' }) -join "`n" | ConvertFrom-Json
-
-    Write-Host ""
-    Write-Host "Select resolution:" -ForegroundColor Cyan
-    $defaultIdx = 0
-    for ($i = 0; $i -lt $allRes.Count; $i++) {
-        $marker = ''
-        if ([string]$allRes[$i].id -eq $ResolutionId) {
-            $marker = ' *'
-            $defaultIdx = $i
+        $typeChoice = Read-Host "Type [$($defaultIdx + 1)]"
+        if ($typeChoice -eq 'c') { Write-Host "Cancelled." -ForegroundColor Yellow; exit 2 }
+        if (-not $typeChoice) { $typeChoice = $defaultIdx + 1 }
+        $typeIdx = [int]$typeChoice - 1
+        if ($typeIdx -ge 0 -and $typeIdx -lt $allTypes.Count) {
+            $TypeId = [string]$allTypes[$typeIdx].id
+            Write-Host "Selected: $($allTypes[$typeIdx].name) (type_id=$TypeId)" -ForegroundColor Green
+        } else {
+            Write-Host "Invalid choice, using default: $($allTypes[$defaultIdx].name)" -ForegroundColor Yellow
         }
-        Write-Host "  $($i+1)) $($allRes[$i].name) (id=$($allRes[$i].id))${marker}"
-    }
-    $resChoice = Read-Host "Resolution [$($defaultIdx + 1)]"
-    if ($resChoice -eq 'c') { Write-Host "Cancelled." -ForegroundColor Yellow; exit 2 }
-    if (-not $resChoice) { $resChoice = $defaultIdx + 1 }
-    $resIdx = [int]$resChoice - 1
-    if ($resIdx -ge 0 -and $resIdx -lt $allRes.Count) {
-        $ResolutionId = [string]$allRes[$resIdx].id
-        Write-Host "Selected: $($allRes[$resIdx].name) (resolution_id=$ResolutionId)" -ForegroundColor Green
-    } else {
-        Write-Host "Invalid choice, using default: $($allRes[$defaultIdx].name)" -ForegroundColor Yellow
+
+        # Read resolutions from resolutions.jsonc and show picker
+        $ResFile = Join-Path $PSScriptRoot "shared\resolutions.jsonc"
+        $allRes = ([System.IO.File]::ReadAllText($ResFile, $utf8NoBom) -split "`n" | Where-Object { $_ -notmatch '^\s*//' }) -join "`n" | ConvertFrom-Json
+
+        Write-Host ""
+        Write-Host "Select resolution:" -ForegroundColor Cyan
+        $defaultIdx = 0
+        for ($i = 0; $i -lt $allRes.Count; $i++) {
+            $marker = ''
+            if ([string]$allRes[$i].id -eq $ResolutionId) {
+                $marker = ' *'
+                $defaultIdx = $i
+            }
+            Write-Host "  $($i+1)) $($allRes[$i].name) (id=$($allRes[$i].id))${marker}"
+        }
+        $resChoice = Read-Host "Resolution [$($defaultIdx + 1)]"
+        if ($resChoice -eq 'c') { Write-Host "Cancelled." -ForegroundColor Yellow; exit 2 }
+        if (-not $resChoice) { $resChoice = $defaultIdx + 1 }
+        $resIdx = [int]$resChoice - 1
+        if ($resIdx -ge 0 -and $resIdx -lt $allRes.Count) {
+            $ResolutionId = [string]$allRes[$resIdx].id
+            Write-Host "Selected: $($allRes[$resIdx].name) (resolution_id=$ResolutionId)" -ForegroundColor Green
+        } else {
+            Write-Host "Invalid choice, using default: $($allRes[$defaultIdx].name)" -ForegroundColor Yellow
+        }
     }
     Write-Host ""
 
@@ -250,11 +272,9 @@ if (-not $auto.IsPresent) {
     Write-Host ""
 }
 
-Write-Host "Upload name: $UploadName"
-
 # Extract MediaInfo: prefer pre-processed file from parse.ps1, fall back to running MediaInfo.exe
 $Mediainfo = ''
-$MediainfoFile = Join-Path $OutDir "${TorrentName}_mediainfo.txt"
+$MediainfoFile = if ($reqData['mediainfo_file'] -and (Test-Path -LiteralPath $reqData['mediainfo_file'])) { $reqData['mediainfo_file'] } else { Join-Path $OutDir "${TorrentName}_mediainfo.txt" }
 if (Test-Path -LiteralPath $MediainfoFile) {
     $Mediainfo = ([System.IO.File]::ReadAllText($MediainfoFile, [System.Text.Encoding]::UTF8) -split "`n" | Where-Object { $_ -notmatch '^Encoding settings' }) -join "`n"
     Write-Host "Using pre-processed mediainfo from: $MediainfoFile"
@@ -306,6 +326,25 @@ try {
         $tvFields = @('-F', "season_number=$SeasonNumber", '-F', "episode_number=$EpisodeNumber")
     }
 
+    $posterFields = @()
+    $tempPoster = $null
+    if ($PosterUrl -and $catType -eq 'software') {
+        try {
+            $posterExt = if ($PosterUrl -match '\.(\w{3,4})(?:\?|$)') { ".$($matches[1])" } else { '.jpg' }
+            $tempPoster = [System.IO.Path]::GetTempFileName() + $posterExt
+            Write-Host -NoNewline "Downloading poster for upload... "
+            & curl.exe -s -L -o $tempPoster "$PosterUrl"
+            if ((Test-Path -LiteralPath $tempPoster) -and (Get-Item -LiteralPath $tempPoster).Length -gt 1000) {
+                $posterFields = @('-F', "torrent-cover=@$tempPoster")
+                Write-Host "OK ($([math]::Round((Get-Item -LiteralPath $tempPoster).Length/1024))KB)" -ForegroundColor Green
+            } else {
+                Write-Host "FAILED (empty or too small)" -ForegroundColor Yellow
+            }
+        } catch {
+            Write-Host "FAILED ($($_.Exception.Message))" -ForegroundColor Yellow
+        }
+    }
+
     $response = & curl.exe -s -w "`n%{http_code}" `
         -F "torrent=@$tempTorrent" `
         -F "name=<$tempName" `
@@ -314,11 +353,13 @@ try {
         -F "resolution_id=$ResolutionId" `
         -F "tmdb=$Tmdb" `
         -F "imdb=$Imdb" `
+        -F "igdb=$Igdb" `
         -F "personal_release=$Personal" `
         -F "anonymous=$Anonymous" `
         -F "description=<$tempDesc" `
         -F "mediainfo=<$tempMediainfo" `
         @tvFields `
+        @posterFields `
         $UploadUrl
 
     $lines    = $response -split "`n"
@@ -327,6 +368,7 @@ try {
 
     if ($httpCode -match '^2') {
         Write-Host "Upload successful!" -ForegroundColor Green
+        $torrentId = $null
         try {
             $respJson = $body | ConvertFrom-Json
             if ($respJson.data -match '/download/(\d+)') {
@@ -338,6 +380,84 @@ try {
             }
         } catch {
             Write-Host $body
+        }
+
+        # Upload cover image via web session (only for software; movie/tv/game covers come from TMDB/IGDB)
+        if ($torrentId -and $catType -eq 'software' -and $PosterUrl -and $tempPoster -and (Test-Path -LiteralPath $tempPoster) -and (Get-Item -LiteralPath $tempPoster).Length -gt 1000) {
+            Write-Host -NoNewline "Uploading cover via web session... "
+            try {
+                $cfg = (Get-Content -LiteralPath $configfile | Where-Object { $_ -notmatch '^\s*//' }) -join "`n" | ConvertFrom-Json
+                $webUser = $cfg.username
+                $webPass = $cfg.password
+                if ($webUser -and $webPass) {
+                    $cj = [System.IO.Path]::GetTempFileName()
+                    $hf = [System.IO.Path]::GetTempFileName()
+                    # Get login page with CSRF, captcha, and honeypot fields
+                    $loginPage = (& curl.exe -s -c $cj -b $cj "${TrackerUrl}/login") -join "`n"
+                    $cs = ''; if ($loginPage -match 'name="_token"\s*value="([^"]+)"') { $cs = $matches[1] }
+                    $ca = ''; if ($loginPage -match 'name="_captcha"\s*value="([^"]+)"') { $ca = $matches[1] }
+                    $rn = ''; $rv = ''
+                    if ($loginPage -match 'name="([A-Za-z0-9]{16})"\s*value="(\d+)"') { $rn = $matches[1]; $rv = $matches[2] }
+                    if ($cs) {
+                        $rf = @(); if ($rn) { $rf = @('-d', "${rn}=${rv}") }
+                        # Login using URL-encoded form (same as edit.ps1)
+                        & curl.exe -s -D $hf -o NUL -c $cj -b $cj `
+                            -d "_token=$cs" -d "_captcha=$ca" -d "_username=" `
+                            -d "username=$webUser" --data-urlencode "password=$webPass" `
+                            -d "remember=on" @rf "${TrackerUrl}/login"
+                        $ll = ''
+                        foreach ($h in Get-Content -LiteralPath $hf) {
+                            if ($h -match '^Location:\s*(.+)') { $ll = $matches[1].Trim() }
+                        }
+                        if ($ll -match '/login') {
+                            Write-Host "FAILED (login failed)" -ForegroundColor Yellow
+                        } else {
+                            if ($ll) { & curl.exe -s -o NUL -c $cj -b $cj --max-time 15 $ll | Out-Null }
+                            # Fetch edit page for CSRF token
+                            $editPage = (& curl.exe -s -c $cj -b $cj --max-time 30 "${TrackerUrl}/torrents/${torrentId}/edit") -join "`n"
+                            $editCsrf = [regex]::Match($editPage, 'name="_token"\s*value="([^"]+)"')
+                            if (-not $editCsrf.Success) {
+                                # Try Livewire token format
+                                $editCsrf = [regex]::Match($editPage, '_token&quot;:&quot;([^&]+)&quot;')
+                            }
+                            if ($editCsrf.Success) {
+                                $formToken = $editCsrf.Groups[1].Value
+                                # POST edit with cover (include required fields to avoid clearing them)
+                                $coverResp = & curl.exe -s -w "`n%{http_code}" -D $hf -b $cj -X POST `
+                                    -F "_token=$formToken" -F "_method=PATCH" `
+                                    -F "name=<$tempName" -F "description=<$tempDesc" -F "mediainfo=<$tempMediainfo" `
+                                    -F "category_id=$CategoryId" -F "type_id=$TypeId" -F "resolution_id=$ResolutionId" `
+                                    -F "anon=$Anonymous" -F "personal_release=$Personal" `
+                                    -F "torrent-cover=@$tempPoster" `
+                                    "${TrackerUrl}/torrents/${torrentId}"
+                                $coverCode = ($coverResp -split "`n")[-1].Trim()
+                                if ($coverCode -eq '302') {
+                                    $coverLoc = ''
+                                    foreach ($h in Get-Content -LiteralPath $hf) {
+                                        if ($h -match '^Location:\s*(.+)') { $coverLoc = $matches[1].Trim() }
+                                    }
+                                    if ($coverLoc -and $coverLoc -notmatch '/edit|/login') {
+                                        Write-Host "OK" -ForegroundColor Green
+                                    } else {
+                                        Write-Host "FAILED (redirect to $coverLoc)" -ForegroundColor Yellow
+                                    }
+                                } else {
+                                    Write-Host "FAILED (HTTP $coverCode)" -ForegroundColor Yellow
+                                }
+                            } else {
+                                Write-Host "FAILED (could not get edit page token)" -ForegroundColor Yellow
+                            }
+                        }
+                    } else {
+                        Write-Host "FAILED (could not get login token)" -ForegroundColor Yellow
+                    }
+                    Remove-Item -LiteralPath $cj, $hf -ErrorAction SilentlyContinue
+                } else {
+                    Write-Host "SKIPPED (username/password not configured)" -ForegroundColor Yellow
+                }
+            } catch {
+                Write-Host "FAILED ($($_.Exception.Message))" -ForegroundColor Yellow
+            }
         }
     } else {
         Write-Host "Upload failed (HTTP $httpCode)" -ForegroundColor Red
@@ -382,6 +502,7 @@ try {
         "resolution_id: $ResolutionId"
         "tmdb:          $Tmdb"
         "imdb:          $Imdb"
+        "igdb:          $Igdb"
         "personal:      $Personal"
         "anonymous:     $Anonymous"
     )
@@ -389,6 +510,7 @@ try {
         $log += "season_number: $SeasonNumber"
         $log += "episode_number: $EpisodeNumber"
     }
+    if ($PosterUrl) { $log += "poster:        $PosterUrl" }
     $log += "description:   (from $TorrentDescFile)"
     $log += "mediainfo:     ($miLines lines)"
     $log += ""
@@ -399,4 +521,5 @@ try {
     Write-Host "Log saved to: $LogFile"
 } finally {
     Remove-Item -LiteralPath $tempName, $tempTorrent, $tempDesc, $tempMediainfo -ErrorAction SilentlyContinue
+    if ($tempPoster) { Remove-Item -LiteralPath $tempPoster -ErrorAction SilentlyContinue }
 }

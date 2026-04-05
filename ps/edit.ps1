@@ -99,6 +99,7 @@ if (-not (Test-Path -LiteralPath $configfile)) {
     exit 1
 }
 
+$script:posterUrl = ''
 if ($uploadreqfile -and -not (Test-Path -LiteralPath $uploadreqfile)) {
     Write-Host "Error: upload request file '$uploadreqfile' not found" -ForegroundColor Red
     exit 1
@@ -112,13 +113,27 @@ if ($uploadreqfile) {
             $upr[$matches[1]] = $matches[2]
         }
     }
-    Write-Host "Loaded upload request from: $uploadreqfile"
+    Write-Host "Loaded upload request from: $uploadreqfile" -ForegroundColor Cyan
     # Auto-detect companion description file if -d not specified
-    if (-not $descfile) {
+    if (-not $descfile -and $upr.ContainsKey('description_file') -and (Test-Path -LiteralPath $upr['description_file'])) {
+        $descfile = $upr['description_file']
+        Write-Host "Using description file: " -NoNewline; Write-Host "$descfile" -ForegroundColor Cyan
+    } elseif (-not $descfile) {
         $autoDesc = $uploadreqfile -replace '_upload_request\.txt$', '_torrent_description.bbcode'
         if ($autoDesc -ne $uploadreqfile -and (Test-Path -LiteralPath $autoDesc)) {
             $descfile = $autoDesc
-            Write-Host "Auto-detected description file: $descfile"
+            Write-Host "Auto-detected description file: $descfile" -ForegroundColor Cyan
+        }
+    }
+    # Auto-detect companion mediainfo file if -m not specified
+    if (-not $mediainfofile -and $upr.ContainsKey('mediainfo_file') -and (Test-Path -LiteralPath $upr['mediainfo_file'])) {
+        $mediainfofile = $upr['mediainfo_file']
+        Write-Host "Using mediainfo file: " -NoNewline; Write-Host "$mediainfofile" -ForegroundColor Cyan
+    } elseif (-not $mediainfofile) {
+        $autoMi = $uploadreqfile -replace '_upload_request\.txt$', '_mediainfo.txt'
+        if ($autoMi -ne $uploadreqfile -and (Test-Path -LiteralPath $autoMi)) {
+            $mediainfofile = $autoMi
+            Write-Host "Auto-detected mediainfo file: $autoMi" -ForegroundColor Cyan
         }
     }
 }
@@ -162,7 +177,7 @@ $formToken   = ''
 
 function Invoke-WebLogin {
     if ($script:webLoggedIn) { return }
-    Write-Host "Logging in to ${TrackerUrl}..."
+    Write-Host "Logging in to ${TrackerUrl}..." -ForegroundColor Cyan
     $lp = (& curl.exe -s -c $script:cookieJar -b $script:cookieJar "${TrackerUrl}/login") -join "`n"
     $cs = ''; if ($lp -match 'name="_token"\s*value="([^"]+)"') { $cs = $matches[1] }
     $ca = ''; if ($lp -match 'name="_captcha"\s*value="([^"]+)"') { $ca = $matches[1] }
@@ -181,13 +196,13 @@ function Invoke-WebLogin {
     }
     Remove-Item -LiteralPath $lhf -ErrorAction SilentlyContinue
     if ($ll -match '/login') { Write-Host "Error: login failed. Check username/password in config." -ForegroundColor Red; exit 1 }
-    Write-Host "Logged in."
+    Write-Host "Logged in." -ForegroundColor Green
     & curl.exe -s -o NUL -c $script:cookieJar -b $script:cookieJar --max-time 15 $ll
     $script:webLoggedIn = $true
 }
 
 # Fetch current torrent data via API
-Write-Host "Fetching torrent #${torrent_id}..."
+Write-Host "Fetching torrent #${torrent_id}..." -ForegroundColor Cyan
 $apiUrl = "${TrackerUrl}/api/torrents/${torrent_id}?api_token=${ApiKey}"
 $fetchResp = & curl.exe -s -w "`n%{http_code}" $apiUrl
 $fetchLines = $fetchResp -split "`n"
@@ -213,22 +228,22 @@ if ($fetchCode -eq '200') {
     $curResolution   = $attrs.resolution
     if ($descfile) {
         $curDesc = [System.IO.File]::ReadAllText((Resolve-Path -LiteralPath $descfile).Path, $utf8NoBom)
-        Write-Host "Using description from: $descfile"
+        Write-Host "Using description from: $descfile" -ForegroundColor Cyan
     } else {
         $curDesc = $attrs.description
         $curDesc = [regex]::Replace($curDesc, '\\([^\x00-\x7F])', '$1')
     }
     if ($mediainfofile) {
         $curMediainfo = (Get-Content -LiteralPath $mediainfofile -Encoding UTF8 | Where-Object { $_ -notmatch '^Encoding settings' }) -join "`n"
-        Write-Host "Using mediainfo from: $mediainfofile"
+        Write-Host "Using mediainfo from: $mediainfofile" -ForegroundColor Cyan
     } else {
         $curMediainfo = ($attrs.media_info -split "`n" | Where-Object { $_ -notmatch '^Encoding settings' }) -join "`n"
     }
 } else {
     # API failed - fall back to web edit page
-    Write-Host "API fetch failed (HTTP $fetchCode), falling back to web..."
+    Write-Host "API fetch failed (HTTP $fetchCode), falling back to web..." -ForegroundColor Yellow
     Invoke-WebLogin
-    Write-Host "Fetching edit page..."
+    Write-Host "Fetching edit page..." -ForegroundColor Cyan
     $editPage = (& curl.exe -s -c $cookieJar -b $cookieJar --max-time 30 "${TrackerUrl}/torrents/${torrent_id}/edit") -join "`n"
     if ($editPage -match 'name="_token"\s*value="([^"]+)"') {
         $formToken = $matches[1]
@@ -271,7 +286,7 @@ if ($fetchCode -eq '200') {
     # Extract description from Livewire contentBbcode
     if ($descfile) {
         $curDesc = [System.IO.File]::ReadAllText((Resolve-Path -LiteralPath $descfile).Path, $utf8NoBom)
-        Write-Host "Using description from: $descfile"
+        Write-Host "Using description from: $descfile" -ForegroundColor Cyan
     } else {
         $curDesc = Extract-LivewireDesc $editPage
         if (-not $curDesc) { $curDesc = '' }
@@ -279,7 +294,7 @@ if ($fetchCode -eq '200') {
     # Extract mediainfo from textarea
     if ($mediainfofile) {
         $curMediainfo = (Get-Content -LiteralPath $mediainfofile -Encoding UTF8 | Where-Object { $_ -notmatch '^Encoding settings' }) -join "`n"
-        Write-Host "Using mediainfo from: $mediainfofile"
+        Write-Host "Using mediainfo from: $mediainfofile" -ForegroundColor Cyan
     } else {
         $curMediainfo = ''
         if ($editPage -match 'name="mediainfo"[\s\S]*?>\s*([\s\S]*?)\s*</textarea') {
@@ -304,14 +319,100 @@ Write-Host ""
 Write-Host "  (enter 'c' at any prompt to cancel)" -ForegroundColor DarkGray
 Write-Host ""
 
+# Offer to load upload request file interactively (if not already provided via -u)
+if (-not $uploadreqfile) {
+    $outDir = Join-Path $PSScriptRoot "output"
+    $icoLoad = [char]::ConvertFromUtf32(0x1F4C4)
+    $icoBrowse = [char]::ConvertFromUtf32(0x1F4C2)
+    $icoSkip = [char]::ConvertFromUtf32(0x23ED)
+    $urDone = $false
+    while (-not $urDone) {
+        Write-Host "Load upload request file:" -ForegroundColor Cyan
+        Write-Host "  1) $icoLoad Select from output dir"
+        Write-Host "  2) $icoBrowse Browse for file"
+        Write-Host "  3) $icoSkip  Skip (enter values manually)"
+        Write-Host ""
+        Write-Host "Upload request (1-3) [3]: " -NoNewline
+        $urKey = [Console]::ReadKey($true).KeyChar
+        Write-Host $urKey
+        if ($urKey -eq 'c') { Write-Host "Cancelled." -ForegroundColor Yellow; exit 0 }
+        $urChoice = [string]$urKey
+        if ($urChoice -eq "`r" -or $urChoice -eq "`n" -or $urChoice -eq ' ') { $urChoice = '3' }
+        $urFile = $null
+        if ($urChoice -eq '1') {
+            $absOut = if (Test-Path $outDir) { (Resolve-Path $outDir).Path } else { $PSScriptRoot }
+            Add-Type -AssemblyName PresentationFramework
+            $dlg = New-Object Microsoft.Win32.OpenFileDialog
+            $dlg.Title = 'Select upload request file from output'
+            $dlg.Filter = 'Upload request (*.txt)|*.txt|All files (*.*)|*.*'
+            $dlg.InitialDirectory = $absOut
+            if ($dlg.ShowDialog()) { $urFile = $dlg.FileName }
+        } elseif ($urChoice -eq '2') {
+            Add-Type -AssemblyName System.Windows.Forms
+            $dlg = New-Object System.Windows.Forms.OpenFileDialog
+            $dlg.Title = 'Select upload request file'
+            $dlg.Filter = 'Upload request (*.txt)|*.txt|All files (*.*)|*.*'
+            if ($dlg.ShowDialog() -eq 'OK') { $urFile = $dlg.FileName }
+        } elseif ($urChoice -eq '3') {
+            $urDone = $true
+        } else {
+            Write-Host "Invalid choice." -ForegroundColor Yellow
+            Write-Host ""
+            continue
+        }
+        if (-not $urDone -and $urFile -and (Test-Path -LiteralPath $urFile)) {
+            foreach ($line in [System.IO.File]::ReadAllLines((Resolve-Path -LiteralPath $urFile).Path, [System.Text.Encoding]::UTF8)) {
+                if ($line -match '^(\w+)=(.*)$') {
+                    $upr[$matches[1]] = $matches[2]
+                }
+            }
+            Write-Host "Loaded upload request from: $urFile" -ForegroundColor Green
+            # Auto-detect companion description file
+            if (-not $descfile -and $upr.ContainsKey('description_file') -and (Test-Path -LiteralPath $upr['description_file'])) {
+                $descfile = $upr['description_file']
+                Write-Host "Using description file: " -NoNewline; Write-Host "$descfile" -ForegroundColor Cyan
+            } elseif (-not $descfile) {
+                $autoDesc = $urFile -replace '_upload_request\.txt$', '_torrent_description.bbcode'
+                if ($autoDesc -ne $urFile -and (Test-Path -LiteralPath $autoDesc)) {
+                    $descfile = $autoDesc
+                    Write-Host "Auto-detected description file: $descfile" -ForegroundColor Cyan
+                }
+            }
+            # Auto-detect companion mediainfo file
+            if (-not $mediainfofile -and $upr.ContainsKey('mediainfo_file') -and (Test-Path -LiteralPath $upr['mediainfo_file'])) {
+                $mediainfofile = $upr['mediainfo_file']
+                Write-Host "Using mediainfo file: " -NoNewline; Write-Host "$mediainfofile" -ForegroundColor Cyan
+            } elseif (-not $mediainfofile) {
+                $autoMi = $urFile -replace '_upload_request\.txt$', '_mediainfo.txt'
+                if ($autoMi -ne $urFile -and (Test-Path -LiteralPath $autoMi)) {
+                    $mediainfofile = $autoMi
+                    Write-Host "Auto-detected mediainfo file: $autoMi" -ForegroundColor Cyan
+                }
+            }
+            # Re-read description and mediainfo from the detected files
+            if ($descfile) {
+                $curDesc = [System.IO.File]::ReadAllText((Resolve-Path -LiteralPath $descfile).Path, $utf8NoBom)
+            }
+            if ($mediainfofile) {
+                $curMediainfo = (Get-Content -LiteralPath $mediainfofile -Encoding UTF8 | Where-Object { $_ -notmatch '^Encoding settings' }) -join "`n"
+            }
+            $urDone = $true
+        } elseif (-not $urDone) {
+            Write-Host "No file selected." -ForegroundColor Yellow
+            Write-Host ""
+        }
+    }
+    Write-Host ""
+}
+
 # Interactive editing - Name
 if ($namefile) {
     $newName = [System.IO.File]::ReadAllText((Resolve-Path -LiteralPath $namefile).Path, [System.Text.Encoding]::UTF8).Trim()
-    Write-Host "Using name from: $namefile"
-    Write-Host "  -> $newName"
+    Write-Host "Using name from: $namefile" -ForegroundColor Cyan
+    Write-Host "  -> $newName" -ForegroundColor Green
 } elseif ($upr.ContainsKey('name')) {
     $newName = $upr['name']
-    Write-Host "Using name from upload request: $newName"
+    Write-Host "Using name from upload request: " -NoNewline; Write-Host "$newName" -ForegroundColor Cyan
 } else {
     Write-Host "Name:" -ForegroundColor Cyan
     Write-Host "  Current: $curName"
@@ -339,22 +440,137 @@ if ($namefile) {
 }
 
 # Interactive description - offer to load from file if not already set via -d or -u
+$descOverridden = $false
 if (-not $descfile -and $upr.Count -eq 0) {
-    Write-Host ""
-    Write-Host "Description:" -ForegroundColor Cyan
-    Write-Host "  Press Enter to keep current, or 'f' to load from file"
-    $descInput = Read-Host "Description"
-    if ($descInput -eq 'c') { Write-Host "Cancelled." -ForegroundColor Yellow; exit 0 }
-    if ($descInput -eq 'f') {
-        Add-Type -AssemblyName System.Windows.Forms
-        $dlg = New-Object System.Windows.Forms.OpenFileDialog
-        $dlg.Title = 'Select description file'
-        $dlg.Filter = 'BBCode files (*.bbcode)|*.bbcode|Text files (*.txt)|*.txt|All files (*.*)|*.*'
-        if ($dlg.ShowDialog() -eq 'OK') {
-            $curDesc = [System.IO.File]::ReadAllText($dlg.FileName, $utf8NoBom)
-            Write-Host "Loaded description from: $($dlg.FileName)" -ForegroundColor Green
+    $outDir = Join-Path $PSScriptRoot "output"
+    $icoLoad = [char]::ConvertFromUtf32(0x1F4C4)
+    $icoBrowse = [char]::ConvertFromUtf32(0x1F4C2)
+    $icoPath = [char]0x270F
+    $icoSkip = [char]::ConvertFromUtf32(0x23ED)
+    $descDone = $false
+    while (-not $descDone) {
+        Write-Host ""
+        Write-Host "Description:" -ForegroundColor Cyan
+        Write-Host "  1) $icoLoad Select from output dir"
+        Write-Host "  2) $icoBrowse Browse for file"
+        Write-Host "  3) $icoPath  Enter path"
+        Write-Host "  4) $icoSkip  Skip (keep current)"
+        Write-Host ""
+        Write-Host "Description (1-4) [4]: " -NoNewline
+        $descKey = [Console]::ReadKey($true).KeyChar
+        Write-Host $descKey
+        if ($descKey -eq 'c') { Write-Host "Cancelled." -ForegroundColor Yellow; exit 0 }
+        $descChoice = [string]$descKey
+        if ($descChoice -eq "`r" -or $descChoice -eq "`n" -or $descChoice -eq ' ') { $descChoice = '4' }
+        if ($descChoice -eq '1') {
+            $absOut = if (Test-Path $outDir) { (Resolve-Path $outDir).Path } else { $PSScriptRoot }
+            Add-Type -AssemblyName PresentationFramework
+            $dlg = New-Object Microsoft.Win32.OpenFileDialog
+            $dlg.Title = 'Select description file from output'
+            $dlg.Filter = 'BBCode files (*.bbcode)|*.bbcode|Text files (*.txt)|*.txt|All files (*.*)|*.*'
+            $dlg.InitialDirectory = $absOut
+            if ($dlg.ShowDialog()) {
+                $curDesc = [System.IO.File]::ReadAllText($dlg.FileName, $utf8NoBom)
+                $descOverridden = $true
+                Write-Host "Loaded description from: $($dlg.FileName)" -ForegroundColor Green
+                $descDone = $true
+            } else {
+                Write-Host "No file selected." -ForegroundColor Yellow
+            }
+        } elseif ($descChoice -eq '2') {
+            Add-Type -AssemblyName System.Windows.Forms
+            $dlg = New-Object System.Windows.Forms.OpenFileDialog
+            $dlg.Title = 'Select description file'
+            $dlg.Filter = 'BBCode files (*.bbcode)|*.bbcode|Text files (*.txt)|*.txt|All files (*.*)|*.*'
+            if ($dlg.ShowDialog() -eq 'OK') {
+                $curDesc = [System.IO.File]::ReadAllText($dlg.FileName, $utf8NoBom)
+                $descOverridden = $true
+                Write-Host "Loaded description from: $($dlg.FileName)" -ForegroundColor Green
+                $descDone = $true
+            } else {
+                Write-Host "No file selected." -ForegroundColor Yellow
+            }
+        } elseif ($descChoice -eq '3') {
+            $descPath = Read-Host "Enter path"
+            if ($descPath -eq 'c') { Write-Host "Cancelled." -ForegroundColor Yellow; exit 0 }
+            if ($descPath -and (Test-Path -LiteralPath $descPath)) {
+                $curDesc = [System.IO.File]::ReadAllText((Resolve-Path -LiteralPath $descPath).Path, $utf8NoBom)
+                $descOverridden = $true
+                Write-Host "Loaded description from: $descPath" -ForegroundColor Green
+                $descDone = $true
+            } elseif ($descPath) {
+                Write-Host "File not found: $descPath" -ForegroundColor Yellow
+            }
+        } elseif ($descChoice -eq '4') {
+            $descDone = $true
         } else {
-            Write-Host "No file selected, keeping current description." -ForegroundColor Yellow
+            Write-Host "Invalid choice." -ForegroundColor Yellow
+        }
+    }
+}
+
+# Interactive MediaInfo - offer to load from file if not already set via -m
+if (-not $mediainfofile -and $upr.Count -eq 0) {
+    $outDir = Join-Path $PSScriptRoot "output"
+    $icoLoad = [char]::ConvertFromUtf32(0x1F4C4)
+    $icoBrowse = [char]::ConvertFromUtf32(0x1F4C2)
+    $icoPath = [char]0x270F
+    $icoSkip = [char]::ConvertFromUtf32(0x23ED)
+    $miDone = $false
+    while (-not $miDone) {
+        Write-Host ""
+        Write-Host "MediaInfo:" -ForegroundColor Cyan
+        Write-Host "  1) $icoLoad Select from output dir"
+        Write-Host "  2) $icoBrowse Browse for file"
+        Write-Host "  3) $icoPath  Enter path"
+        Write-Host "  4) $icoSkip  Skip (keep current)"
+        Write-Host ""
+        Write-Host "MediaInfo (1-4) [4]: " -NoNewline
+        $miKey = [Console]::ReadKey($true).KeyChar
+        Write-Host $miKey
+        if ($miKey -eq 'c') { Write-Host "Cancelled." -ForegroundColor Yellow; exit 0 }
+        $miChoice = [string]$miKey
+        if ($miChoice -eq "`r" -or $miChoice -eq "`n" -or $miChoice -eq ' ') { $miChoice = '4' }
+        if ($miChoice -eq '1') {
+            $absOut = if (Test-Path $outDir) { (Resolve-Path $outDir).Path } else { $PSScriptRoot }
+            Add-Type -AssemblyName PresentationFramework
+            $dlg = New-Object Microsoft.Win32.OpenFileDialog
+            $dlg.Title = 'Select MediaInfo file from output'
+            $dlg.Filter = 'Text files (*.txt)|*.txt|All files (*.*)|*.*'
+            $dlg.InitialDirectory = $absOut
+            if ($dlg.ShowDialog()) {
+                $curMediainfo = (Get-Content -LiteralPath $dlg.FileName -Encoding UTF8 | Where-Object { $_ -notmatch '^Encoding settings' }) -join "`n"
+                Write-Host "Loaded mediainfo from: $($dlg.FileName)" -ForegroundColor Green
+                $miDone = $true
+            } else {
+                Write-Host "No file selected." -ForegroundColor Yellow
+            }
+        } elseif ($miChoice -eq '2') {
+            Add-Type -AssemblyName System.Windows.Forms
+            $dlg = New-Object System.Windows.Forms.OpenFileDialog
+            $dlg.Title = 'Select MediaInfo file'
+            $dlg.Filter = 'Text files (*.txt)|*.txt|All files (*.*)|*.*'
+            if ($dlg.ShowDialog() -eq 'OK') {
+                $curMediainfo = (Get-Content -LiteralPath $dlg.FileName -Encoding UTF8 | Where-Object { $_ -notmatch '^Encoding settings' }) -join "`n"
+                Write-Host "Loaded mediainfo from: $($dlg.FileName)" -ForegroundColor Green
+                $miDone = $true
+            } else {
+                Write-Host "No file selected." -ForegroundColor Yellow
+            }
+        } elseif ($miChoice -eq '3') {
+            $miPath = Read-Host "Enter path"
+            if ($miPath -eq 'c') { Write-Host "Cancelled." -ForegroundColor Yellow; exit 0 }
+            if ($miPath -and (Test-Path -LiteralPath $miPath)) {
+                $curMediainfo = (Get-Content -LiteralPath $miPath -Encoding UTF8 | Where-Object { $_ -notmatch '^Encoding settings' }) -join "`n"
+                Write-Host "Loaded mediainfo from: $miPath" -ForegroundColor Green
+                $miDone = $true
+            } elseif ($miPath) {
+                Write-Host "File not found: $miPath" -ForegroundColor Yellow
+            }
+        } elseif ($miChoice -eq '4') {
+            $miDone = $true
+        } else {
+            Write-Host "Invalid choice." -ForegroundColor Yellow
         }
     }
 }
@@ -368,7 +584,7 @@ if ($upr.ContainsKey('category_id')) {
     $catType = ($allCategories | Where-Object { [string]$_.id -eq $newCategoryId }).type
     if (-not $catType) { $catType = 'movie' }
     $catName = ($allCategories | Where-Object { [string]$_.id -eq $newCategoryId }).name
-    Write-Host "Category from upload request: $catName (category_id=$newCategoryId, $catType)"
+    Write-Host "Category from upload request: " -NoNewline; Write-Host "$catName (category_id=$newCategoryId, $catType)" -ForegroundColor Cyan
 } else {
     Write-Host ""
     Write-Host "Select category:" -ForegroundColor Cyan
@@ -397,69 +613,75 @@ if ($upr.ContainsKey('category_id')) {
     }
 }
 
-# Type picker
-$TypesFile = Join-Path $PSScriptRoot "shared\types.jsonc"
-$allTypes = ([System.IO.File]::ReadAllText($TypesFile, $utf8NoBom) -split "`n" | Where-Object { $_ -notmatch '^\s*//' }) -join "`n" | ConvertFrom-Json
-
-if ($upr.ContainsKey('type_id')) {
-    $newTypeId = $upr['type_id']
-    $typeName = ($allTypes | Where-Object { [string]$_.id -eq $newTypeId }).name
-    Write-Host "Type from upload request: $typeName (type_id=$newTypeId)"
+# Type and resolution pickers — skip for games and software
+if ($catType -eq 'game' -or $catType -eq 'software') {
+    $newTypeId = $curTypeId
+    $newResolutionId = $curResolutionId
 } else {
-    Write-Host ""
-    Write-Host "Select type:" -ForegroundColor Cyan
-    $defaultIdx = 0
-    for ($i = 0; $i -lt $allTypes.Count; $i++) {
-        $marker = ''
-        if ([string]$allTypes[$i].id -eq $curTypeId) {
-            $marker = ' *'
-            $defaultIdx = $i
-        }
-        Write-Host "  $($i+1)) $($allTypes[$i].name) (id=$($allTypes[$i].id))${marker}"
-    }
-    $typeChoice = Read-Host "Type [$($defaultIdx + 1)]"
-    if ($typeChoice -eq 'c') { Write-Host "Cancelled." -ForegroundColor Yellow; exit 0 }
-    if (-not $typeChoice) { $typeChoice = $defaultIdx + 1 }
-    $typeIdx = [int]$typeChoice - 1
-    if ($typeIdx -ge 0 -and $typeIdx -lt $allTypes.Count) {
-        $newTypeId = [string]$allTypes[$typeIdx].id
-        Write-Host "Selected: $($allTypes[$typeIdx].name) (type_id=$newTypeId)" -ForegroundColor Green
-    } else {
-        $newTypeId = $curTypeId
-        Write-Host "Invalid choice, keeping: $curType" -ForegroundColor Yellow
-    }
-}
+    # Type picker
+    $TypesFile = Join-Path $PSScriptRoot "shared\types.jsonc"
+    $allTypes = ([System.IO.File]::ReadAllText($TypesFile, $utf8NoBom) -split "`n" | Where-Object { $_ -notmatch '^\s*//' }) -join "`n" | ConvertFrom-Json
 
-# Resolution picker
-$ResFile = Join-Path $PSScriptRoot "shared\resolutions.jsonc"
-$allRes = ([System.IO.File]::ReadAllText($ResFile, $utf8NoBom) -split "`n" | Where-Object { $_ -notmatch '^\s*//' }) -join "`n" | ConvertFrom-Json
-
-if ($upr.ContainsKey('resolution_id')) {
-    $newResolutionId = $upr['resolution_id']
-    $resName = ($allRes | Where-Object { [string]$_.id -eq $newResolutionId }).name
-    Write-Host "Resolution from upload request: $resName (resolution_id=$newResolutionId)"
-} else {
-    Write-Host ""
-    Write-Host "Select resolution:" -ForegroundColor Cyan
-    $defaultIdx = 0
-    for ($i = 0; $i -lt $allRes.Count; $i++) {
-        $marker = ''
-        if ([string]$allRes[$i].id -eq $curResolutionId) {
-            $marker = ' *'
-            $defaultIdx = $i
-        }
-        Write-Host "  $($i+1)) $($allRes[$i].name) (id=$($allRes[$i].id))${marker}"
-    }
-    $resChoice = Read-Host "Resolution [$($defaultIdx + 1)]"
-    if ($resChoice -eq 'c') { Write-Host "Cancelled." -ForegroundColor Yellow; exit 0 }
-    if (-not $resChoice) { $resChoice = $defaultIdx + 1 }
-    $resIdx = [int]$resChoice - 1
-    if ($resIdx -ge 0 -and $resIdx -lt $allRes.Count) {
-        $newResolutionId = [string]$allRes[$resIdx].id
-        Write-Host "Selected: $($allRes[$resIdx].name) (resolution_id=$newResolutionId)" -ForegroundColor Green
+    if ($upr.ContainsKey('type_id')) {
+        $newTypeId = $upr['type_id']
+        $typeName = ($allTypes | Where-Object { [string]$_.id -eq $newTypeId }).name
+        Write-Host "Type from upload request: " -NoNewline; Write-Host "$typeName (type_id=$newTypeId)" -ForegroundColor Cyan
     } else {
-        $newResolutionId = $curResolutionId
-        Write-Host "Invalid choice, keeping: $curResolution" -ForegroundColor Yellow
+        Write-Host ""
+        Write-Host "Select type:" -ForegroundColor Cyan
+        $defaultIdx = 0
+        for ($i = 0; $i -lt $allTypes.Count; $i++) {
+            $marker = ''
+            if ([string]$allTypes[$i].id -eq $curTypeId) {
+                $marker = ' *'
+                $defaultIdx = $i
+            }
+            Write-Host "  $($i+1)) $($allTypes[$i].name) (id=$($allTypes[$i].id))${marker}"
+        }
+        $typeChoice = Read-Host "Type [$($defaultIdx + 1)]"
+        if ($typeChoice -eq 'c') { Write-Host "Cancelled." -ForegroundColor Yellow; exit 0 }
+        if (-not $typeChoice) { $typeChoice = $defaultIdx + 1 }
+        $typeIdx = [int]$typeChoice - 1
+        if ($typeIdx -ge 0 -and $typeIdx -lt $allTypes.Count) {
+            $newTypeId = [string]$allTypes[$typeIdx].id
+            Write-Host "Selected: $($allTypes[$typeIdx].name) (type_id=$newTypeId)" -ForegroundColor Green
+        } else {
+            $newTypeId = $curTypeId
+            Write-Host "Invalid choice, keeping: $curType" -ForegroundColor Yellow
+        }
+    }
+
+    # Resolution picker
+    $ResFile = Join-Path $PSScriptRoot "shared\resolutions.jsonc"
+    $allRes = ([System.IO.File]::ReadAllText($ResFile, $utf8NoBom) -split "`n" | Where-Object { $_ -notmatch '^\s*//' }) -join "`n" | ConvertFrom-Json
+
+    if ($upr.ContainsKey('resolution_id')) {
+        $newResolutionId = $upr['resolution_id']
+        $resName = ($allRes | Where-Object { [string]$_.id -eq $newResolutionId }).name
+        Write-Host "Resolution from upload request: " -NoNewline; Write-Host "$resName (resolution_id=$newResolutionId)" -ForegroundColor Cyan
+    } else {
+        Write-Host ""
+        Write-Host "Select resolution:" -ForegroundColor Cyan
+        $defaultIdx = 0
+        for ($i = 0; $i -lt $allRes.Count; $i++) {
+            $marker = ''
+            if ([string]$allRes[$i].id -eq $curResolutionId) {
+                $marker = ' *'
+                $defaultIdx = $i
+            }
+            Write-Host "  $($i+1)) $($allRes[$i].name) (id=$($allRes[$i].id))${marker}"
+        }
+        $resChoice = Read-Host "Resolution [$($defaultIdx + 1)]"
+        if ($resChoice -eq 'c') { Write-Host "Cancelled." -ForegroundColor Yellow; exit 0 }
+        if (-not $resChoice) { $resChoice = $defaultIdx + 1 }
+        $resIdx = [int]$resChoice - 1
+        if ($resIdx -ge 0 -and $resIdx -lt $allRes.Count) {
+            $newResolutionId = [string]$allRes[$resIdx].id
+            Write-Host "Selected: $($allRes[$resIdx].name) (resolution_id=$newResolutionId)" -ForegroundColor Green
+        } else {
+            $newResolutionId = $curResolutionId
+            Write-Host "Invalid choice, keeping: $curResolution" -ForegroundColor Yellow
+        }
     }
 }
 
@@ -470,7 +692,13 @@ if ($upr.Count -gt 0) {
     $newEpisode  = if ($upr.ContainsKey('episode_number')) { $upr['episode_number'] } else { $curEpisode }
     $newPersonal = if ($upr.ContainsKey('personal'))       { $upr['personal'] }       else { $curPersonal }
     $newAnon     = if ($upr.ContainsKey('anonymous'))      { $upr['anonymous'] }      else { $curAnon }
-    Write-Host "TMDB=$newTmdb  IMDB=$newImdb  season=$newSeason  episode=$newEpisode  personal=$newPersonal  anonymous=$newAnon"
+    $script:posterUrl = if ($upr.ContainsKey('poster') -and $upr['poster']) { $upr['poster'] } else { '' }
+    Write-Host "TMDB=" -NoNewline; Write-Host "$newTmdb" -ForegroundColor Cyan -NoNewline
+    Write-Host "  IMDB=" -NoNewline; Write-Host "$newImdb" -ForegroundColor Cyan -NoNewline
+    Write-Host "  season=" -NoNewline; Write-Host "$newSeason" -ForegroundColor Cyan -NoNewline
+    Write-Host "  episode=" -NoNewline; Write-Host "$newEpisode" -ForegroundColor Cyan -NoNewline
+    Write-Host "  personal=" -NoNewline; Write-Host "$newPersonal" -ForegroundColor Cyan -NoNewline
+    Write-Host "  anonymous=" -NoNewline; Write-Host "$newAnon" -ForegroundColor Cyan
 } else {
     Write-Host ""
     $newTmdb = Read-Host "TMDB ID [$curTmdb]"
@@ -511,7 +739,7 @@ try {
     Invoke-WebLogin
 
     if (-not $webFallback) {
-        Write-Host "Fetching edit page..."
+        Write-Host "Fetching edit page..." -ForegroundColor Cyan
         $editPage = (& curl.exe -s -c $cookieJar -b $cookieJar --max-time 30 "${TrackerUrl}/torrents/${torrent_id}/edit") -join "`n"
         if ($editPage -match 'name="_token"\s*value="([^"]+)"') {
             $formToken = $matches[1]
@@ -521,7 +749,7 @@ try {
             exit 1
         }
         # If no explicit description provided, get from edit page (API may return incomplete version)
-        if (-not $descfile) {
+        if (-not $descfile -and -not $descOverridden) {
             $lvDesc = Extract-LivewireDesc $editPage
             if ($lvDesc) {
                 $curDesc = $lvDesc
@@ -554,7 +782,27 @@ try {
     }
 
     # Step 3: POST torrent update with _method=PATCH
-    Write-Host "Updating torrent #${torrent_id}..."
+    Write-Host "Updating torrent #${torrent_id}..." -ForegroundColor Cyan
+
+    # Download cover image if poster URL is available
+    $coverFields = @()
+    $tempCover = $null
+    if ($script:posterUrl) {
+        try {
+            $coverExt = if ($script:posterUrl -match '\.(\w{3,4})(?:\?|$)') { ".$($matches[1])" } else { '.jpg' }
+            $tempCover = [System.IO.Path]::GetTempFileName() + $coverExt
+            Write-Host -NoNewline "Downloading cover for upload... "
+            & curl.exe -s -L -o $tempCover "$($script:posterUrl)"
+            if ((Test-Path -LiteralPath $tempCover) -and (Get-Item -LiteralPath $tempCover).Length -gt 1000) {
+                $coverFields = @('-F', "torrent-cover=@$tempCover")
+                Write-Host "OK ($([math]::Round((Get-Item -LiteralPath $tempCover).Length/1024))KB)" -ForegroundColor Green
+            } else {
+                Write-Host "FAILED (empty or too small)" -ForegroundColor Yellow
+            }
+        } catch {
+            Write-Host "FAILED ($($_.Exception.Message))" -ForegroundColor Yellow
+        }
+    }
 
     $response = & curl.exe -s -w "`n%{http_code}" `
         -D $headerFile `
@@ -569,6 +817,7 @@ try {
         -F "type_id=$newTypeId" `
         -F "resolution_id=$newResolutionId" `
         @extraFields `
+        @coverFields `
         -F "anon=$newAnon" `
         -F "personal_release=$newPersonal" `
         "${TrackerUrl}/torrents/${torrent_id}"
@@ -583,8 +832,8 @@ try {
         }
     }
 
-    Write-Host "HTTP status: $httpCode"
-    Write-Host "Redirect: $location"
+    Write-Host "HTTP status: " -NoNewline; Write-Host "$httpCode" -ForegroundColor Green
+    Write-Host "Redirect: " -NoNewline; Write-Host "$location" -ForegroundColor Green
     if ($httpCode -eq '302') {
         if ($location -match '/edit|/login') {
             Write-Host "Error: update failed. Fetching error details..." -ForegroundColor Red
@@ -592,9 +841,9 @@ try {
             # Extract Laravel validation errors
             $errors = [regex]::Matches($errorPage, '<li>([^<]+)</li>') | ForEach-Object { $_.Groups[1].Value }
             if ($errors) {
-                foreach ($err in $errors) { Write-Host "  - $err" }
+                foreach ($err in $errors) { Write-Host "  - $err" -ForegroundColor Red }
             } else {
-                Write-Host "(Could not extract specific error messages)"
+                Write-Host "(Could not extract specific error messages)" -ForegroundColor Yellow
             }
         } else {
             Write-Host "Torrent updated successfully." -ForegroundColor Green
@@ -612,4 +861,5 @@ try {
     }
 } finally {
     Remove-Item -LiteralPath $cookieJar, $tempName, $tempDesc, $tempMediainfo, $headerFile -ErrorAction SilentlyContinue
+    if ($tempCover) { Remove-Item -LiteralPath $tempCover -ErrorAction SilentlyContinue }
 }

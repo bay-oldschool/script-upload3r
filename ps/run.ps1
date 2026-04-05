@@ -33,7 +33,7 @@ param(
 
     [switch]$dht,
 
-    [string]$steps,
+    [string[]]$steps,
 
     [Alias('q')]
     [string]$query,
@@ -149,7 +149,7 @@ function Resolve-Step($s) {
 # Build list of steps to run
 $runSteps = @(1,2,3,4,5,6,7,8)
 if ($steps) {
-    $runSteps = $steps.Split(',') | ForEach-Object { Resolve-Step $_ }
+    $runSteps = ($steps -join ',').Split(',') | ForEach-Object { Resolve-Step $_ }
 }
 
 $createArgs = @{ directory = $directory; configfile = $configfile }

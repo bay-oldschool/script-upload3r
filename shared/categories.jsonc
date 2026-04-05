@@ -15,5 +15,16 @@
   { "name": "Series/HD", "id": 12, "type": "tv" },
   { "name": "BG Audio Сериали", "id": 40, "type": "tv" },
   { "name": "BG Audio Анимационен сериал", "id": 41, "type": "tv" },
-  { "name": "БГ Сериали", "id": 39, "type": "tv" }
+  { "name": "БГ Сериали", "id": 39, "type": "tv" },
+  // Game categories
+  { "name": "Games/Mac", "id": 18, "type": "game" },
+  { "name": "Games/PC ISO", "id": 19, "type": "game" },
+  { "name": "Games/PC Rip", "id": 20, "type": "game" },
+  { "name": "Games/PS", "id": 21, "type": "game" },
+  { "name": "Games/Xbox", "id": 22, "type": "game" },
+  { "name": "Games/Console", "id": 23, "type": "game" },
+  // Software categories
+  { "name": "Programs/Mac", "id": 24, "type": "software" },
+  { "name": "Programs/PC ISO", "id": 25, "type": "software" },
+  { "name": "Programs/Other", "id": 26, "type": "software" }
 ]

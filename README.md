@@ -1,19 +1,27 @@
 # SCRIPT UPLOAD3R
 
-A set of scripts for preparing and uploading media to Unit3D-based torrent trackers. Runs on Windows via **PowerShell** / **Cmd**. Features an interactive menu (`run.bat`) or full CLI support.
+A set of scripts for preparing and uploading media to Unit3D-based torrent trackers. Runs on Windows via **PowerShell** / **Cmd**. Features an interactive menu (`run.bat`) or full CLI support. Supports **movies**, **TV shows**, **games**, and **software**.
 
 ## What It Does
 
-Runs 8 steps in sequence for a given media directory:
+### Movie / TV Pipeline (8 steps)
 
 1. **MediaInfo** — parses all video files and saves a formatted text report
-2. **Create Torrent** — creates a private `.torrent` file with your tracker's announce URL
-3. **Screenshots** — captures 3 JPG screenshots at 15%, 50%, and 85% of playback
+2. **Create Torrent** — creates a private `.torrent` file with auto-calculated piece size and progress bar
+3. **Screenshots** — captures 3 PNG screenshots at randomized timestamps
 4. **TMDB Search** — fetches title, poster/banner URLs, and Bulgarian title
 5. **IMDB Lookup** — fetches IMDB ID, rating, genres, runtime, director, and cast
-6. **AI Description** — generates a rich Bulgarian BBCode description via Gemini or Ollama
+6. **AI Description** — generates a rich Bulgarian BBCode description via 8 supported AI providers
 7. **Upload Screenshots** — uploads screenshots to onlyimage.org and saves direct URLs
 8. **Build Description** — assembles the final BBCode torrent description file
+
+### Game Pipeline
+
+Uses **IGDB** (via Twitch API) for game metadata, trailers, and cover art, with a game-specific AI description prompt.
+
+### Software Pipeline
+
+AI-generated description with a software-specific prompt. Manual poster support.
 
 All output files are saved to the `output/` directory.
 
@@ -78,12 +86,30 @@ Then edit `config.jsonc` with your credentials. JSONC supports `//` line comment
   "translate_lang": "bg",
   "ai_provider": "gemini",
   "gemini_api_key": "YOUR_GEMINI_API_KEY",
-  "gemini_model": "gemini-2.5-flash-lite",
+  "gemini_model": "gemini-2.5-flash",
   "ollama_model": "gemma3:4b",
   "ollama_url": "",
+  "groq_api_key": "YOUR_GROQ_API_KEY",
+  "groq_model": "qwen/qwen3-32b",
+  "grok_api_key": "YOUR_GROK_API_KEY",
+  "grok_model": "grok-3-mini",
+  "cerebras_api_key": "YOUR_CEREBRAS_API_KEY",
+  "cerebras_model": "llama-3.3-70b",
+  "sambanova_api_key": "YOUR_SAMBANOVA_API_KEY",
+  "sambanova_model": "Meta-Llama-3.1-70B-Instruct",
+  "openrouter_api_key": "YOUR_OPENROUTER_API_KEY",
+  "openrouter_model": "qwen/qwen3-32b:free",
+  "huggingface_api_key": "YOUR_HUGGINGFACE_API_KEY",
+  "huggingface_model": "Qwen/Qwen2.5-72B-Instruct",
+  "twitch_client_id": "YOUR_TWITCH_CLIENT_ID",
+  "twitch_client_secret": "YOUR_TWITCH_CLIENT_SECRET",
   "omdb_api_key": "YOUR_OMDB_API_KEY",
   "mdblist_api_key": "YOUR_MDBLIST_API_KEY",
-  "onlyimage_api_key": "YOUR_ONLYIMAGE_API_KEY"
+  "onlyimage_api_key": "YOUR_ONLYIMAGE_API_KEY",
+  "show_logo": 1,
+  "logo_source": "image",
+  "logo_display": "direct",
+  "logo_width": 40
 }
 ```
 
@@ -105,13 +131,34 @@ Then edit `config.jsonc` with your credentials. JSONC supports `//` line comment
 | `google_api_key` | [Google Cloud API key](https://console.cloud.google.com/apis/credentials) — needed only for TMDB description translation (enable **Cloud Translation API**) |
 | `translate_lang` | Translation language code (e.g. `bg` for Bulgarian) |
 | `gemini_api_key` | [Google Gemini API key](https://aistudio.google.com/app/apikey) — free via Google AI Studio |
-| `gemini_model` | Gemini model to use (default: `gemini-2.5-flash-lite`) |
-| `ai_provider` | Force AI provider: `"gemini"` or `"ollama"` (auto-detected if omitted) |
+| `gemini_model` | Gemini model to use (default: `gemini-2.5-flash`) |
+| `ai_provider` | AI provider: `"gemini"`, `"ollama"`, `"groq"`, `"grok"`, `"cerebras"`, `"sambanova"`, `"openrouter"`, or `"huggingface"` |
 | `ollama_model` | Ollama model name (e.g. `gemma3:4b`) — if set and no `ai_provider`, Ollama is used |
 | `ollama_url` | Ollama API URL (default: `http://localhost:11434`) |
+| `groq_api_key` | [Groq API key](https://console.groq.com/) — fast inference provider |
+| `groq_model` | Groq model (default: `qwen/qwen3-32b`) |
+| `grok_api_key` | [Grok API key](https://x.ai/) — xAI provider |
+| `grok_model` | Grok model (default: `grok-3-mini`) |
+| `cerebras_api_key` | [Cerebras API key](https://cloud.cerebras.ai/) — fast inference provider |
+| `cerebras_model` | Cerebras model (default: `llama-3.3-70b`) |
+| `sambanova_api_key` | [SambaNova API key](https://cloud.sambanova.ai/) — fast inference provider |
+| `sambanova_model` | SambaNova model (default: `Meta-Llama-3.1-70B-Instruct`) |
+| `openrouter_api_key` | [OpenRouter API key](https://openrouter.ai/) — multi-model router |
+| `openrouter_model` | OpenRouter model (default: `qwen/qwen3-32b:free`) |
+| `huggingface_api_key` | [HuggingFace API key](https://huggingface.co/) — inference API |
+| `huggingface_model` | HuggingFace model (default: `Qwen/Qwen2.5-72B-Instruct`) |
+| `twitch_client_id` | [Twitch Client ID](https://dev.twitch.tv/console) — required for IGDB game search |
+| `twitch_client_secret` | Twitch Client Secret — required for IGDB game search |
 | `mdblist_api_key` | [MDBList API key](https://mdblist.com/) — free tier, used for Rotten Tomatoes Critics and Audience scores |
 | `omdb_api_key` | [OMDB API key](https://www.omdbapi.com/apikey.aspx) — free tier, used as fallback for RT Critics score when MDBList has no data |
 | `onlyimage_api_key` | [onlyimage.org API key](https://onlyimage.org/user/settings/api) — register and find it in account settings |
+| `show_logo` | Show ASCII/image logo in main menu (`1` = show, `0` = hide) |
+| `logo_source` | Logo source: `"text"` (colored ASCII), `"image"` (render logo.png) |
+| `logo_display` | Image display mode: `"ansi"`, `"block"`, `"ascii"`, or `"direct"` (Sixel) |
+| `logo_width` | Logo width in characters for image display modes |
+| `logo_color_letters` | 256-color code for logo letters (text source only) |
+| `logo_color_dark` | 256-color code for dark shading (text source only) |
+| `logo_color_light` | 256-color code for light shading (text source only) |
 
 ## Usage
 
@@ -119,12 +166,13 @@ Then edit `config.jsonc` with your credentials. JSONC supports `//` line comment
 
 Just run `run.bat` without arguments for the interactive menu:
 - Browse for folder/file or enter path manually
-- Choose content type (Movie / TV Series)
+- Choose content type (Movie / TV Series / Game / Software)
 - Select pipeline steps
-- Upload submenu: upload torrent, upload subtitle, list last 10 uploads
+- Upload submenu: upload torrent, upload subtitle, list last 10 uploads, view upload logs
 - Edit/delete torrents by ID
-- Maintenance: list saved paths, list output, clear paths/output, run install
+- Maintenance: list saved paths, list output, clear paths/output, run install/uninstall, view README
 - Preview upload files (request, description with BBCode rendering, mediainfo)
+- Configurable ASCII/image logo header
 
 ### Full pipeline (CLI)
 
@@ -151,10 +199,10 @@ run.bat [options] <directory> [config.jsonc]
 |---|------|-------------|
 | 1 | `parse` | Extract MediaInfo from video files |
 | 2 | `create` | Create .torrent file |
-| 3 | `screens` | Take screenshots at 15%, 50%, 85% |
+| 3 | `screens` | Take PNG screenshots at randomized timestamps |
 | 4 | `tmdb` | Search TMDB for metadata and BG title |
 | 5 | `imdb` | Fetch IMDB details (rating, cast, etc.) |
-| 6 | `describe` | Generate AI description via Gemini/Ollama |
+| 6 | `describe` | Generate AI description (8 providers supported) |
 | 7 | `upload` | Upload screenshots to onlyimage.org |
 | 8 | `description` | Build final BBCode torrent description |
 
@@ -319,6 +367,11 @@ Each pipeline step can be run standalone. Scripts are in `ps/`.
 | AI description | `.\ps\describe.ps1 [-tv] [-query query] [-season N] <dir> [config]` |
 | Upload screenshots | `.\ps\screens_upload.ps1 <dir> [config]` |
 | Build description | `.\ps\description.ps1 [-tv] <dir> [config]` |
+| IGDB search | `.\ps\igdb.ps1 [-query query] <dir> [config]` |
+| Game description | `.\ps\describe_game.ps1 <dir> [config]` |
+| Software description | `.\ps\describe_software.ps1 <dir> [config]` |
+| Game pipeline | `.\ps\run_game.ps1 <dir> [config]` |
+| Software pipeline | `.\ps\run_software.ps1 <dir> [config]` |
 | Upload subtitle | `.\ps\subtitle.ps1 <torrent_id> <file> [-l lang] [-n note] [-a]` |
 | List uploads | `.\ps\list_uploads.ps1 [count] [config]` |
 | Preview BBCode | `.\ps\preview_bbcode.ps1 [-images] <file.bbcode>` |
@@ -333,9 +386,9 @@ All files are written to `output/`:
 |------|-------------|
 | `<name>.torrent` | Torrent file |
 | `<name>_mediainfo.txt` | MediaInfo report |
-| `<name>_screen01.jpg` | Screenshot at 15% |
-| `<name>_screen02.jpg` | Screenshot at 50% |
-| `<name>_screen03.jpg` | Screenshot at 85% |
+| `<name>_screen01.png` | Screenshot 1 |
+| `<name>_screen02.png` | Screenshot 2 |
+| `<name>_screen03.png` | Screenshot 3 |
 | `<name>_tmdb.txt` | TMDB search results (top 5 with BG title) |
 | `<name>_imdb.txt` | IMDB details (ID, rating, cast, etc.) |
 | `<name>_description.bbcode` | AI-generated BBCode description |

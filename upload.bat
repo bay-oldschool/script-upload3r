@@ -302,7 +302,7 @@ if not exist "!REQ_FILE!" (
 ) else (
     echo %CYAN%=== Upload Request ===%RESET%
     echo.
-    type "!REQ_FILE!"
+    powershell -NoProfile -Command "[Console]::OutputEncoding=[System.Text.Encoding]::UTF8; Get-Content -LiteralPath '!REQ_FILE!' -Encoding UTF8"
 )
 echo.
 echo  Press any key to return...
@@ -325,11 +325,16 @@ powershell -ExecutionPolicy Bypass -File "%~dp0ps\preview_bbcode.ps1" "!DESC_FIL
 if not !errorlevel! equ 2 goto upl_preview_desc_done
 echo.
 echo  1) 🖼  Render with images
+echo  2) 📝 Edit in Notepad
 echo  0) 🔙 Back
-choice /c 10 /n /m "Select (0-1): "
-if errorlevel 2 goto upl_preview_desc_done
+choice /c 120 /n /m "Select (0-2): "
+if errorlevel 3 goto ask_auto
+if errorlevel 2 goto upl_preview_desc_edit
 cls
 powershell -ExecutionPolicy Bypass -File "%~dp0ps\preview_bbcode.ps1" "!DESC_FILE!" -images
+goto upl_preview_desc_done
+:upl_preview_desc_edit
+start /wait notepad.exe "!DESC_FILE!"
 :upl_preview_desc_done
 echo.
 echo  Press any key to return...

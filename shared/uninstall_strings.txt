@@ -1,0 +1,22 @@
+🗑️ Uninstall Tools
+📦 Installed tools:
+🎬 ffmpeg + ffprobe
+ℹ️ MediaInfo
+🖼️ ImageMagick
+🎨 chafa
+🅰️ All
+🚪 Exit
+❌ Removing ffmpeg + ffprobe...
+❌ Removing MediaInfo...
+❌ Removing ImageMagick...
+❌ Removing chafa...
+✅ Removed ffmpeg + ffprobe.
+✅ Removed MediaInfo.
+✅ Removed ImageMagick.
+✅ Removed chafa.
+⚠️ winget not found. Remove manually.
+😴 Nothing to uninstall.
+👋 Exiting.
+⏱️ Done in
+❓ Select tool to uninstall (Enter=all)
+⚠️ Invalid selection.
