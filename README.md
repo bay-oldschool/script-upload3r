@@ -1,6 +1,6 @@
 # SCRIPT UPLOAD3R
 
-A set of scripts for preparing and uploading media to Unit3D-based torrent trackers. Runs on Windows via **PowerShell** / **Cmd**. Features an interactive menu (`run.bat`) or full CLI support. Supports **movies**, **TV shows**, **games**, and **software**.
+A set of scripts for preparing and uploading media to Unit3D-based torrent trackers. Runs on Windows via **PowerShell** / **Cmd**. Features an interactive menu (`run.bat`) or full CLI support. Supports **movies**, **TV shows**, **games**, **software**, and **music**.
 
 ## What It Does
 
@@ -23,6 +23,10 @@ Uses **IGDB** (via Twitch API) for game metadata, trailers, and cover art, with 
 
 AI-generated description with a software-specific prompt. Manual poster support.
 
+### Music Pipeline
+
+Uses **Deezer**, **MusicBrainz**, **Discogs**, **Last.fm**, **TheAudioDB**, and **iTunes** for album/artist metadata with configurable provider priority. Includes track durations, AI description with music-specific prompt, and music categories.
+
 All output files are saved to the `output/` directory.
 
 ## Directory Structure
@@ -32,6 +36,7 @@ torrent-upload/
 ├── ps/          # PowerShell pipeline scripts (.ps1)
 ├── tools/       # Binaries: MediaInfo.exe, ffmpeg.exe, ffprobe.exe (auto-downloaded by install script)
 ├── shared/      # Shared resources: ai_call.ps1, ai_system_prompt.txt, mktorrent.ps1
+├── templates/   # Customizable BBCode description templates
 ├── output/      # Generated output files
 ├── run.bat      # Interactive menu / cmd wrapper for ps/run.ps1
 ├── upload.bat   # Interactive menu / cmd wrapper for ps/upload.ps1
@@ -80,6 +85,11 @@ Then edit `config.jsonc` with your credentials. JSONC supports `//` line comment
   "imdb": 0,
   "personal": 0,
   "anonymous": 0,
+  "internal": 0,
+  "featured": 0,
+  "free": 0,
+  "doubleup": 0,
+  "sticky": 0,
   "subtitle_language_id": 15,
   "tmdb_api_key": "YOUR_TMDB_API_KEY",
   "google_api_key": "YOUR_GOOGLE_API_KEY",
@@ -103,6 +113,10 @@ Then edit `config.jsonc` with your credentials. JSONC supports `//` line comment
   "huggingface_model": "Qwen/Qwen2.5-72B-Instruct",
   "twitch_client_id": "YOUR_TWITCH_CLIENT_ID",
   "twitch_client_secret": "YOUR_TWITCH_CLIENT_SECRET",
+  "music_providers": "deezer,musicbrainz,discogs,lastfm,audiodb,itunes",
+  "discogs_token": "",
+  "lastfm_api_key": "",
+  "audiodb_api_key": "",
   "omdb_api_key": "YOUR_OMDB_API_KEY",
   "mdblist_api_key": "YOUR_MDBLIST_API_KEY",
   "onlyimage_api_key": "YOUR_ONLYIMAGE_API_KEY",
@@ -126,6 +140,15 @@ Then edit `config.jsonc` with your credentials. JSONC supports `//` line comment
 | `resolution_id` | Default resolution ID (auto-detected from directory name or MediaInfo) |
 | `personal` | `1` to mark as personal release, `0` otherwise |
 | `anonymous` | `1` to upload anonymously, `0` to show your username |
+| `internal` | Staff-only: `0` = off, `1` = on, `"ask"` = prompt on upload |
+| `featured` | Staff-only: `0` = off, `1` = on, `"ask"` = prompt on upload |
+| `free` | Staff-only: `0` = off, `1` = on, `"ask"` = prompt on upload |
+| `fl_until` | Staff-only: freeleech until date (`0` = off, `"ask"` = prompt) |
+| `doubleup` | Staff-only: `0` = off, `1` = on, `"ask"` = prompt on upload |
+| `du_until` | Staff-only: double upload until date (`0` = off, `"ask"` = prompt) |
+| `sticky` | Staff-only: `0` = off, `1` = on, `"ask"` = prompt on upload |
+| `mod_queue_opt_in` | Staff-only: `0` = off, `1` = on, `"ask"` = prompt on upload |
+| `categories_file` | Custom categories JSONC file path (populated via `fetch_categories.ps1`) |
 | `subtitle_language_id` | Default language ID for subtitle uploads (e.g. `15` for Bulgarian) |
 | `tmdb_api_key` | [TMDB API key](https://www.themoviedb.org/settings/api) — free account required |
 | `google_api_key` | [Google Cloud API key](https://console.cloud.google.com/apis/credentials) — needed only for TMDB description translation (enable **Cloud Translation API**) |
@@ -149,9 +172,17 @@ Then edit `config.jsonc` with your credentials. JSONC supports `//` line comment
 | `huggingface_model` | HuggingFace model (default: `Qwen/Qwen2.5-72B-Instruct`) |
 | `twitch_client_id` | [Twitch Client ID](https://dev.twitch.tv/console) — required for IGDB game search |
 | `twitch_client_secret` | Twitch Client Secret — required for IGDB game search |
+| `music_providers` | Comma-separated music provider priority: `deezer,musicbrainz,discogs,lastfm,audiodb,itunes` |
+| `discogs_token` | [Discogs personal access token](https://www.discogs.com/settings/developers) — for Discogs metadata |
+| `lastfm_api_key` | [Last.fm API key](https://www.last.fm/api/account/create) — for Last.fm metadata |
+| `audiodb_api_key` | [TheAudioDB API key](https://www.theaudiodb.com/) — free key: `523532` |
 | `mdblist_api_key` | [MDBList API key](https://mdblist.com/) — free tier, used for Rotten Tomatoes Critics and Audience scores |
 | `omdb_api_key` | [OMDB API key](https://www.omdbapi.com/apikey.aspx) — free tier, used as fallback for RT Critics score when MDBList has no data |
 | `onlyimage_api_key` | [onlyimage.org API key](https://onlyimage.org/user/settings/api) — register and find it in account settings |
+| `template_layout_poster` | BBCode template for descriptions with poster (default: `templates/layout_poster.bbcode`) |
+| `template_layout_no_poster` | BBCode template for descriptions without poster (default: `templates/layout_no_poster.bbcode`) |
+| `template_fallback_movie` | Fallback template for movie descriptions (default: `templates/fallback_movie.bbcode`) |
+| `template_screenshots` | BBCode template for screenshot section (default: `templates/screenshots.bbcode`) |
 | `show_logo` | Show ASCII/image logo in main menu (`1` = show, `0` = hide) |
 | `logo_source` | Logo source: `"text"` (colored ASCII), `"image"` (render logo.png) |
 | `logo_display` | Image display mode: `"ansi"`, `"block"`, `"ascii"`, or `"direct"` (Sixel) |
@@ -166,7 +197,7 @@ Then edit `config.jsonc` with your credentials. JSONC supports `//` line comment
 
 Just run `run.bat` without arguments for the interactive menu:
 - Browse for folder/file or enter path manually
-- Choose content type (Movie / TV Series / Game / Software)
+- Choose content type (Movie / TV Series / Game / Software / Music)
 - Select pipeline steps
 - Upload submenu: upload torrent, upload subtitle, list last 10 uploads, view upload logs
 - Edit/delete torrents by ID
@@ -372,9 +403,17 @@ Each pipeline step can be run standalone. Scripts are in `ps/`.
 | Software description | `.\ps\describe_software.ps1 <dir> [config]` |
 | Game pipeline | `.\ps\run_game.ps1 <dir> [config]` |
 | Software pipeline | `.\ps\run_software.ps1 <dir> [config]` |
+| Music pipeline | `.\ps\run_music.ps1 <dir> [config]` |
+| Music metadata | `.\ps\music.ps1 <dir> [config]` |
+| Music AI description | `.\ps\describe_music.ps1 <dir> [config]` |
 | Upload subtitle | `.\ps\subtitle.ps1 <torrent_id> <file> [-l lang] [-n note] [-a]` |
 | List uploads | `.\ps\list_uploads.ps1 [count] [config]` |
+| Fetch categories | `.\ps\fetch_categories.ps1 [config]` |
+| View categories | `.\ps\view_categories.ps1 [config]` |
 | Preview BBCode | `.\ps\preview_bbcode.ps1 [-images] <file.bbcode>` |
+| Preview NFO | `.\ps\preview_nfo.ps1 <file.nfo>` |
+| Torrent contents | `.\ps\torrent_contents.ps1 <torrent> <mediapath> [config]` |
+| Change cover/banner | `.\ps\change_image.ps1 <torrent_id> [config]` |
 
 ---
 
@@ -437,6 +476,9 @@ Width-based detection handles non-standard heights (e.g. 1920x960 correctly maps
 - **BG title**: appends Bulgarian title and year to upload name (e.g. `Movie.2013.1080p / Филм (2013)`)
 - **BG audio/subtitle detection**: automatically appends `🇧🇬🔤` for Bulgarian subtitles (embedded or external `.srt`) and `🇧🇬🔊` for Bulgarian audio to the upload title; prepends `🤖` when external subtitle filename contains `.GT` (Google Translate)
 - **Rotten Tomatoes ratings**: displays RT Critics (🍅) and Audience (🍿) scores in torrent description via MDBList API, with OMDB fallback
+- **Staff-only fields**: `internal`, `featured`, `free`, `fl_until`, `doubleup`, `du_until`, `sticky`, `mod_queue_opt_in` — set to `0`, `1`, or `"ask"` to prompt on upload
+- **Default NFO**: auto-generated CP437 NFO with title, links, and group separators
+- **Customizable templates**: BBCode description layout is fully customizable via template files in `templates/`
 - **Interactive pickers**: category, type, and resolution selection with arrow-key navigation and default preselection
 - **Upload log**: saves full request fields and response to `_upload.log`
 

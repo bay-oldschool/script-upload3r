@@ -1,6 +1,6 @@
 [b][size=25][url=https://github.com/bay-oldschool/script-upload3r]SCRIPT UPLOAD3R[/url][/size][/b]
 
-Набор от скриптове за подготовка и качване на медия в Unit3D тракери. Работи на Windows чрез [b]PowerShell[/b] / [b]Cmd[/b]. Включва интерактивно меню ([b]run.bat[/b]) или пълна CLI поддръжка. Поддържа [b]филми[/b], [b]сериали[/b], [b]игри[/b] и [b]софтуер[/b].
+Набор от скриптове за подготовка и качване на медия в Unit3D тракери. Работи на Windows чрез [b]PowerShell[/b] / [b]Cmd[/b]. Включва интерактивно меню ([b]run.bat[/b]) или пълна CLI поддръжка. Поддържа [b]филми[/b], [b]сериали[/b], [b]игри[/b], [b]софтуер[/b] и [b]музика[/b].
 
 [b][size=15]Какво прави[/size][/b]
 
@@ -21,6 +21,8 @@
 
 [b]Софтуер:[/b] AI описание със софтуерен промпт. Ръчна поддръжка на постер.
 
+[b]Музика:[/b] Използва [b]Deezer[/b], [b]MusicBrainz[/b], [b]Discogs[/b], [b]Last.fm[/b], [b]TheAudioDB[/b] и [b]iTunes[/b] за метаданни на албуми/изпълнители с конфигуруем приоритет. Включва продължителност на песните, AI описание с музикален промпт и музикални категории.
+
 Всички изходни файлове се записват в директорията [b]output/[/b].
 
 [b][size=15]Структура на директориите[/size][/b]
@@ -30,6 +32,7 @@ torrent-upload/
 ├── ps/          # PowerShell скриптове (.ps1)
 ├── tools/       # MediaInfo.exe, ffmpeg.exe, ffprobe.exe (свалят се от install скрипта)
 ├── shared/      # ai_call.ps1, ai_system_prompt.txt, mktorrent.ps1
+├── templates/   # BBCode шаблони за описания (customizable)
 ├── output/      # Генерирани файлове
 ├── run.bat      # Интерактивно меню / Cmd обвивка за ps/run.ps1
 ├── upload.bat   # Интерактивно меню / Cmd обвивка за ps/upload.ps1
@@ -82,6 +85,11 @@ install.bat
   "imdb": 0,
   "personal": 0,
   "anonymous": 0,
+  "internal": 0,
+  "featured": 0,
+  "free": 0,
+  "doubleup": 0,
+  "sticky": 0,
   "subtitle_language_id": 15,
   "tmdb_api_key": "YOUR_TMDB_API_KEY",
   "google_api_key": "YOUR_GOOGLE_API_KEY",
@@ -99,6 +107,10 @@ install.bat
   "huggingface_api_key": "YOUR_HUGGINGFACE_API_KEY",
   "twitch_client_id": "YOUR_TWITCH_CLIENT_ID",
   "twitch_client_secret": "YOUR_TWITCH_CLIENT_SECRET",
+  "music_providers": "deezer,musicbrainz,discogs,lastfm,audiodb,itunes",
+  "discogs_token": "",
+  "lastfm_api_key": "",
+  "audiodb_api_key": "",
   "omdb_api_key": "YOUR_OMDB_API_KEY",
   "mdblist_api_key": "YOUR_MDBLIST_API_KEY",
   "onlyimage_api_key": "YOUR_ONLYIMAGE_API_KEY",
@@ -118,6 +130,9 @@ install.bat
 [*][b]password[/b] — парола за тракера (необходимо за edit/delete/subtitle скриптовете)
 [*][b]name_convention[/b] — 1 = UNIT3D формат (интервали, нормализирани заглавия), 0 = оригинално име на торента
 [*][b]personal[/b] — 1 за персонален рилийз, 0 иначе
+[*][b]internal / featured / free / doubleup / sticky[/b] — staff-only полета: 0 = изкл, 1 = вкл, "ask" = пита при качване
+[*][b]fl_until / du_until / mod_queue_opt_in[/b] — допълнителни staff-only полета (0 / "ask")
+[*][b]categories_file[/b] — персонализиран JSONC файл с категории (попълва се чрез fetch_categories.ps1)
 [*][b]subtitle_language_id[/b] — ID на език по подразбиране за качване на субтитри (напр. 15 за български)
 [*][b]tmdb_api_key[/b] — [url=https://www.themoviedb.org/settings/api]TMDB API key[/url] (безплатен акаунт)
 [*][b]google_api_key[/b] — [url=https://console.cloud.google.com/apis/credentials]Google Cloud API key[/url] (за превод на описания — активирай Cloud Translation API)
@@ -132,6 +147,10 @@ install.bat
 [*][b]openrouter_api_key[/b] — [url=https://openrouter.ai/]OpenRouter API key[/url] (multi-model router)
 [*][b]huggingface_api_key[/b] — [url=https://huggingface.co/]HuggingFace API key[/url] (inference API)
 [*][b]twitch_client_id[/b] / [b]twitch_client_secret[/b] — [url=https://dev.twitch.tv/console]Twitch credentials[/url] (необходими за IGDB търсене на игри)
+[*][b]music_providers[/b] — приоритет на музикални доставчици: deezer,musicbrainz,discogs,lastfm,audiodb,itunes
+[*][b]discogs_token[/b] — [url=https://www.discogs.com/settings/developers]Discogs personal access token[/url]
+[*][b]lastfm_api_key[/b] — [url=https://www.last.fm/api/account/create]Last.fm API key[/url]
+[*][b]audiodb_api_key[/b] — [url=https://www.theaudiodb.com/]TheAudioDB API key[/url] (безплатен ключ: 523532)
 [*][b]mdblist_api_key[/b] — [url=https://mdblist.com/]MDBList API key[/url] (безплатен, за Rotten Tomatoes Critics и Audience оценки)
 [*][b]omdb_api_key[/b] — [url=https://www.omdbapi.com/apikey.aspx]OMDB API key[/url] (безплатен, резервен вариант за RT Critics оценка когато MDBList няма данни)
 [*][b]onlyimage_api_key[/b] — [url=https://onlyimage.org/user/settings/api]onlyimage.org API key[/url] (от настройките на акаунта)
@@ -145,7 +164,7 @@ install.bat
 
 [b]Интерактивно меню:[/b]
 
-Просто стартирай [b]run.bat[/b] без аргументи за интерактивното меню — избор на папка/файл, тип съдържание (филм/сериал/игра/софтуер), стъпки, качване (торент или субтитри), редактиране/изтриване на торенти, преглед на файлове, поддръжка. Конфигуруемо ASCII/image лого.
+Просто стартирай [b]run.bat[/b] без аргументи за интерактивното меню — избор на папка/файл, тип съдържание (филм/сериал/игра/софтуер/музика), стъпки, качване (торент или субтитри), редактиране/изтриване на торенти, преглед на файлове с промяна на корица/банер/ключови думи, поддръжка. Конфигуруемо ASCII/image лого.
 
 [b]Пълен pipeline (CLI):[/b]
 
@@ -322,7 +341,12 @@ subtitle.bat 3643 "movie.bg.srt"
 [*][b]Rotten Tomatoes рейтинги[/b]: показва RT Critics (🍅) и Audience (🍿) оценки в описанието (чрез MDBList API, с OMDB като резервен вариант)
 [*][b]Интерактивен избор[/b]: категория, тип и резолюция с навигация и предварително избрана стойност
 [*][b]Лог файл[/b]: записва пълната заявка и отговор в _upload.log
-[*][b]Игри/Софтуер[/b]: отделни pipeline-и за игри (IGDB метаданни) и софтуер с категории 18-26
+[*][b]Игри/Софтуер/Музика[/b]: отделни pipeline-и за игри (IGDB), софтуер и музика (Deezer/MusicBrainz/Discogs/Last.fm/TheAudioDB/iTunes) с категории 18-26
+[*][b]Staff полета[/b]: internal, featured, free, doubleup, sticky и др. — стойност 0/1/"ask"
+[*][b]NFO файл[/b]: автоматично генериран CP437 NFO с заглавие, линкове и ASCII лого
+[*][b]BBCode шаблони[/b]: персонализируеми шаблони за описания в templates/
+[*][b]Преглед на торент[/b]: преглед и премахване на файлове от съдържанието на торента
+[*][b]Промяна на корица/банер[/b]: избор от топ-10 TMDB постери/банери с превю в терминала
 [*][b]Торент прогрес[/b]: цветен ANSI прогрес бар при хеширане, автоматичен piece size
 [*][b]Лого[/b]: конфигуруемо ASCII или image лого в менюто (текст/ANSI/Sixel)
 [/list]

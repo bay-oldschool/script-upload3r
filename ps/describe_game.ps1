@@ -148,12 +148,20 @@ if (-not $gameName) {
         $gameName = $query
     } else {
         $gameName = $baseName
+        # Normalize separators: dots/underscores to spaces
+        $gameName = $gameName -replace '[._]', ' '
         # Remove bracketed tags like [SKIDROW], (GOG), {PLAZA}
         $gameName = $gameName -replace '\s*[\[\(\{][^\]\)\}]+[\]\)\}]\s*', ' '
-        $gameName = $gameName -replace '(?i)[-\.](CODEX|PLAZA|GOG|FLT|SKIDROW|RELOADED|RUNE|DARKSiDERS|TiNYiSO|EMPRESS|SiMPLEX|DOGE|Razor1911|HI2U|ANOMALY|P2P|KaOs|FitGirl|DODI)$', ''
-        $gameName = $gameName -replace '(?i)[-\.]v?\d+[\.\d]+\s*$', ''
-        $gameName = $gameName -replace '(?i)[-\.](PC|MAC|Linux|PS[345]?|Xbox|Switch|NSW|GOG|Steam|Repack|Portable|Deluxe|Ultimate|Gold|GOTY|Premium|Complete|Edition|Collection|Update|DLC|Incl|MULTi\d*)[-\.]?', ' '
-        $gameName = $gameName -replace '[._]', ' '
+        # Remove scene release group (trailing -GROUPNAME, any group)
+        $gameName = $gameName -replace '-[A-Za-z][A-Za-z0-9]+$', ''
+        # Remove platform tags
+        $gameName = $gameName -replace '(?i)[\s-](PC|MAC|Linux|PS[345]?|Xbox|Switch|NSW|GOG|Steam)[\s-]?', ' '
+        # Remove edition/extra tags
+        $gameName = $gameName -replace '(?i)[\s-](Repack|Portable|Deluxe|Ultimate|Gold|GOTY|Premium|Complete|Edition|Collection|Update|DLC|Incl|MULTi\d*)[\s-]?', ' '
+        # Remove version tags like v1.2.3 or v1.0r4
+        $gameName = $gameName -replace '(?i)[\s-]v\d+(\s\d+[a-z]?\d*)*\s*$', ''
+        $gameName = $gameName -replace '(?i)[\s-]\d+(\s\d+)+\s*$', ''
+        # Remove year from end
         $gameName = $gameName -replace '\s*(19|20)\d{2}\s*$', ''
         $gameName = ($gameName -replace '\s+', ' ').Trim()
     }
@@ -223,9 +231,9 @@ Remove-Item -LiteralPath $promptFile -ErrorAction SilentlyContinue
 if (Test-Path -LiteralPath $OutputFile) {
     $descText = [System.IO.File]::ReadAllText($OutputFile, [System.Text.Encoding]::UTF8)
     # Extract POSTER_URL line from AI output if present
-    if ($descText -match '(?m)^POSTER_URL:\s*(.+?)\s*$') {
+    if ($descText -match '(?m)(?:^|\s)POSTER_URL:\s*(\S+)') {
         $aiPosterUrl = $matches[1].Trim()
-        $descText = ($descText -replace '(?m)\r?\nPOSTER_URL:\s*.+\s*$', '').TrimEnd()
+        $descText = ($descText -replace '(?m)\s*POSTER_URL:\s*\S+', '').TrimEnd()
         $posterFile = Join-Path -Path $OutDir -ChildPath "${baseName}_poster_url.txt"
         [System.IO.File]::WriteAllText($posterFile, $aiPosterUrl, $utf8NoBom)
         Write-Host "AI suggested poster: $aiPosterUrl" -ForegroundColor Cyan

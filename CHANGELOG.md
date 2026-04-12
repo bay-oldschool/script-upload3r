@@ -1,5 +1,54 @@
 # Changelog
 
+## v5.1.0 — 2026-04-12
+
+### New Features
+- **Music pipeline** (`run_music.ps1`): full pipeline for music torrents — 6 metadata providers (Deezer, MusicBrainz, Discogs, Last.fm, TheAudioDB, iTunes) with configurable priority order, AI description with music-specific prompt, track durations, and music categories
+- **Customizable BBCode description templates**: layout templates (`templates/`) for poster, no-poster, fallback, and screenshots sections — uses `{{VAR}}` variables and `{{#VAR}}...{{/VAR}}` conditional blocks; paths configurable in `config.jsonc`
+- **Staff-only upload fields**: `internal`, `featured`, `free`, `fl_until`, `doubleup`, `du_until`, `sticky`, `mod_queue_opt_in` — set to `0`, `1`, or `"ask"` to prompt on upload
+- **Default NFO generation**: auto-generated CP437 NFO with title row, TMDB/IMDB/IGDB links, release group separator, and ASCII logo (`shared/default.nfo`)
+- **BDInfo subtitle notes**: language-specific subtitle notes injected into description from `shared/bdinfo_strings.txt`
+- **NFO preview** (`preview_nfo.ps1`): preview NFO files in the terminal
+- **Cover/banner image picker** (`change_image.ps1`): choose from top-10 TMDB posters/backdrops with terminal preview; change cover/banner from preview menus in `run.bat` and `upload.bat`
+- **Torrent contents viewer** (`torrent_contents.ps1`): view torrent file list with sizes and remove individual files from the torrent
+- **Fetch categories** (`fetch_categories.ps1`): scrape the tracker's live category list from the upload form and save as a JSONC file for the pipeline
+- **View categories** (`view_categories.ps1`): print the active category list (honoring `categories_file` override)
+- **Edit form: cover, banner, keywords, BDInfo**: edit script now prompts for cover image, banner image, keywords, and BDInfo fields; "Enter URL" option added to cover/banner image pickers
+- **Prefer Bulgarian TMDB images**: TMDB image fetching now prefers Bulgarian-language posters and banners via the TMDB images API
+- **Trailer skipping in torrent creation**: `mktorrent.ps1` skips trailer/featurette subdirectories when creating torrent files
+
+### Improvements
+- **Music metadata consolidation** (`music.ps1`): merged all music provider logic (Deezer, MusicBrainz, Discogs, Last.fm, TheAudioDB, iTunes) into a single script; Discogs short-album detection; `discogs_id` support in upload and edit flows
+- **Track durations**: music descriptions now include individual track durations
+- **Categories override**: music uploads can override the category using real category names from the active category list
+- **Upload diagnostics**: upload script now shows detailed diagnostic info when upload fails
+- **Top-10 TMDB images**: `tmdb.ps1` now fetches top-10 posters and backdrops (up from 1) for image selection
+- **Preview menus enhanced**: both `run.bat` and `upload.bat` menus now include cover/banner/keywords change options and BDInfo/NFO preview
+- **Menu consolidation**: BDInfo and keywords merged into a single preview/edit flow in the menus
+- **Render image utility** (`render_image.ps1`): shared script for terminal image rendering (Sixel/ANSI) used across preview menus
+- **Build logo ASCII** (`build_logo_ascii.ps1`): generate ASCII logo from `shared/logo_ascii.txt` with configurable colors
+- **Audio language normalization**: `parse.ps1` normalizes unknown/undefined audio languages to English
+- **Image/Other section recognition**: MediaInfo parser now recognizes Image and Other sections, ensuring Audio blocks are flushed correctly
+
+### Bug Fixes
+- **Staff field 'ask' crash**: fixed `"ask"` string values in staff fields (internal, featured, etc.) crashing upload with `[int]` cast error
+- **IGDB game name cleaning**: improved stripping of repack/scene/platform tags from game names
+- **BBCode preview rendering**: fixed rendering issues in `preview_bbcode.ps1`
+- **Category override**: fixed music category override using real category names instead of IDs
+- **Empty file path guards**: `edit.ps1` now guards `Test-Path` against empty upload request file paths
+- **change_image variable parsing**: fixed variable parsing in `change_image.ps1`
+
+### New Config Keys
+- `categories_file` — custom categories JSONC file path (populated via `fetch_categories.ps1`)
+- `internal` / `featured` / `free` / `fl_until` / `doubleup` / `du_until` / `sticky` / `mod_queue_opt_in` — staff-only upload fields (0/1/"ask")
+- `music_providers` — comma-separated provider priority: `deezer,musicbrainz,discogs,lastfm,audiodb,itunes`
+- `discogs_token` — [Discogs](https://www.discogs.com/settings/developers) personal access token
+- `lastfm_api_key` — [Last.fm](https://www.last.fm/api/account/create) API key
+- `audiodb_api_key` — [TheAudioDB](https://www.theaudiodb.com/) API key (free key: `523532`)
+- `template_layout_poster` / `template_layout_no_poster` / `template_fallback_movie` / `template_screenshots` — BBCode template file paths
+
+---
+
 ## v5.0.0 — 2026-04-05
 
 ### New Features

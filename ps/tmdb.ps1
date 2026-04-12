@@ -219,6 +219,76 @@ try {
     }
 } catch { }
 
+# Fetch TMDB images (bg, en, null) and build sorted top-10 lists
+function Sort-TmdbImages($list) {
+    if (-not $list) { return @() }
+    $bg    = @($list | Where-Object { $_.iso_639_1 -eq 'bg' } | Sort-Object -Property vote_average -Descending)
+    $en    = @($list | Where-Object { $_.iso_639_1 -eq 'en' } | Sort-Object -Property vote_average -Descending)
+    $nl    = @($list | Where-Object { -not $_.iso_639_1 }     | Sort-Object -Property vote_average -Descending)
+    $other = @($list | Where-Object { $_.iso_639_1 -and $_.iso_639_1 -ne 'bg' -and $_.iso_639_1 -ne 'en' } | Sort-Object -Property vote_average -Descending)
+    return @($bg + $en + $nl + $other)
+}
+try {
+    $imagesUrl = "https://api.themoviedb.org/3/$mediaType/$($bestItem.id)/images?api_key=$TmdbApiKey&include_image_language=bg,en,null"
+    $imagesResp = Invoke-RestMethod -Uri $imagesUrl
+
+    $sortedPosters   = Sort-TmdbImages $imagesResp.posters
+    $sortedBackdrops = Sort-TmdbImages $imagesResp.backdrops
+    $topPosters      = @($sortedPosters   | Select-Object -First 10)
+    $topBackdrops    = @($sortedBackdrops | Select-Object -First 10)
+
+    $bgPoster = $null
+    $bgBanner = $null
+    if ($topPosters.Count -gt 0 -and $topPosters[0].iso_639_1 -eq 'bg') {
+        $bgPoster = "$imageBase/w500$($topPosters[0].file_path)"
+    }
+    if ($topBackdrops.Count -gt 0 -and $topBackdrops[0].iso_639_1 -eq 'bg') {
+        $bgBanner = "$imageBase/original$($topBackdrops[0].file_path)"
+    }
+    # Replace poster/banner in output for the best-match result
+    if ($bgPoster -or $bgBanner) {
+        $inBest = $false
+        for ($li = 0; $li -lt $outputLines.Count; $li++) {
+            if ($outputLines[$li] -match '^\[\d+\]' -and $outputLines[$li] -match [regex]::Escape($enTitle)) { $inBest = $true }
+            elseif ($outputLines[$li] -match '^\[\d+\]' -and $inBest) { break }
+            if ($inBest -and $bgPoster -and $outputLines[$li] -match '^\s+Poster:') {
+                $outputLines[$li] = "    Poster:       $bgPoster"
+                Write-Host "Using Bulgarian poster from TMDB" -ForegroundColor Green
+            }
+            if ($inBest -and $bgBanner -and $outputLines[$li] -match '^\s+Banner:') {
+                $outputLines[$li] = "    Banner:       $bgBanner"
+                Write-Host "Using Bulgarian banner from TMDB" -ForegroundColor Green
+            }
+        }
+    }
+
+    # Append full top-10 listings for later selection (preview cover/banner menus)
+    if ($topPosters.Count -gt 0) {
+        $outputLines.Add("")
+        $outputLines.Add("POSTERS (bg,en,null by rating):")
+        $pi = 0
+        foreach ($p in $topPosters) {
+            $pi++
+            $url = "$imageBase/w500$($p.file_path)"
+            $lang = if ($p.iso_639_1) { [string]$p.iso_639_1 } else { 'null' }
+            $vote = if ($null -ne $p.vote_average) { [math]::Round([double]$p.vote_average, 2) } else { 0 }
+            $outputLines.Add(("  {0,2}) [{1}] ({2}) {3}" -f $pi, $lang, $vote, $url))
+        }
+    }
+    if ($topBackdrops.Count -gt 0) {
+        $outputLines.Add("")
+        $outputLines.Add("BACKDROPS (bg,en,null by rating):")
+        $bi = 0
+        foreach ($b in $topBackdrops) {
+            $bi++
+            $url = "$imageBase/original$($b.file_path)"
+            $lang = if ($b.iso_639_1) { [string]$b.iso_639_1 } else { 'null' }
+            $vote = if ($null -ne $b.vote_average) { [math]::Round([double]$b.vote_average, 2) } else { 0 }
+            $outputLines.Add(("  {0,2}) [{1}] ({2}) {3}" -f $bi, $lang, $vote, $url))
+        }
+    }
+} catch { }
+
 # Fetch season-specific metadata for TV shows (skip for multi-season packs like S01-S05)
 $SeasonNum = $null
 if ($mediaType -eq 'tv') {

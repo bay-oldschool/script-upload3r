@@ -20,6 +20,7 @@ if (-not $file -or -not (Test-Path -LiteralPath $file)) {
 }
 
 $text = [System.IO.File]::ReadAllText((Resolve-Path -LiteralPath $file).Path, [System.Text.Encoding]::UTF8)
+$text = $text -replace "`r", ''
 
 # ANSI escape codes
 $esc = [char]27

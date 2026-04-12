@@ -61,7 +61,7 @@ if (-not (Test-Path -LiteralPath $configfile)) {
 $config     = (Get-Content -LiteralPath $configfile | Where-Object { $_ -notmatch '^\s*//' }) -join "`n" | ConvertFrom-Json
 $ApiKey     = $config.api_key
 if (-not $ApiKey) { Write-Host "Skipping: 'api_key' not configured in $configfile" -ForegroundColor Yellow; exit 0 }
-$TrackerUrl = $config.tracker_url
+$TrackerUrl = if ($config.tracker_url) { ([string]$config.tracker_url).TrimEnd('/') } else { '' }
 $Username   = $config.username
 $Password   = $config.password
 

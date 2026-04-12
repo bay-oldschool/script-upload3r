@@ -8,6 +8,8 @@
   { "name": "Movies", "id": 6, "type": "movie" },
   { "name": "Movies/HD", "id": 7, "type": "movie" },
   { "name": "Movies/BG", "id": 8, "type": "movie" },
+  { "name": "Movies/Science", "id": 9, "type": "movie" },
+  { "name": "Movies/Russia", "id": 10, "type": "movie" },
   { "name": "BG Audio Филми", "id": 38, "type": "movie" },
   { "name": "BG Audio Анимационен филм", "id": 42, "type": "movie" },
   // TV categories
@@ -16,6 +18,12 @@
   { "name": "BG Audio Сериали", "id": 40, "type": "tv" },
   { "name": "BG Audio Анимационен сериал", "id": 41, "type": "tv" },
   { "name": "БГ Сериали", "id": 39, "type": "tv" },
+  // Music categories
+  { "name": "Music", "id": 13, "type": "music" },
+  { "name": "Music/DTS", "id": 14, "type": "music" },
+  { "name": "Music/DVD-R", "id": 15, "type": "music" },
+  { "name": "Music/Hi-Res/Vinyl", "id": 16, "type": "music" },
+  { "name": "Music/Lossless", "id": 17, "type": "music" },
   // Game categories
   { "name": "Games/Mac", "id": 18, "type": "game" },
   { "name": "Games/PC ISO", "id": 19, "type": "game" },
@@ -23,8 +31,20 @@
   { "name": "Games/PS", "id": 21, "type": "game" },
   { "name": "Games/Xbox", "id": 22, "type": "game" },
   { "name": "Games/Console", "id": 23, "type": "game" },
+  { "name": "Games/Linux", "id": 37, "type": "game" },
   // Software categories
   { "name": "Programs/Mac", "id": 24, "type": "software" },
   { "name": "Programs/PC ISO", "id": 25, "type": "software" },
-  { "name": "Programs/Other", "id": 26, "type": "software" }
+  { "name": "Programs/Other", "id": 26, "type": "software" },
+  // Other categories
+  { "name": "Sports", "id": 27, "type": "movie" },
+  { "name": "Sports/HD", "id": 28, "type": "movie" },
+  { "name": "Mobile/GSM", "id": 29, "type": "software" },
+  { "name": "Android/Games", "id": 30, "type": "game" },
+  { "name": "Android/Apps", "id": 31, "type": "software" },
+  { "name": "Other", "id": 32, "type": "other" },
+  { "name": "Clips", "id": 33, "type": "movie" },
+  { "name": "Books/Comic", "id": 34, "type": "other" },
+  { "name": "Dox", "id": 35, "type": "movie" },
+  { "name": "XXX", "id": 36, "type": "movie" }
 ]

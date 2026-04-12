@@ -248,10 +248,12 @@ echo  1) 🎬 MOVIE
 echo  2) 📺 TV SERIES
 echo  3) 🎮 GAME
 echo  4) 💻 SOFTWARE
+echo  5) 🎸 MUSIC
 echo  0) 🚪 Back to main menu
 echo.
-choice /c 12340 /n /m "Select (0-4): "
-if errorlevel 5 goto menu
+choice /c 123450 /n /m "Select (0-5): "
+if errorlevel 6 goto menu
+if errorlevel 5 goto select_steps_music
 if errorlevel 4 goto select_steps_software
 if errorlevel 3 goto select_steps_game
 if errorlevel 2 set "TV_OPTION=-tv" & set "TYPE_LABEL=TV SERIES" & goto select_steps
@@ -319,7 +321,39 @@ echo !STEPS_INPUT! | findstr /C:"!CREATE_STEP!" >nul 2>&1
 if not errorlevel 1 goto select_dht
 set "DHT_OPTION=" & set "DHT_LABEL=DISABLED" & goto simple_confirm
 
-:: Shared confirm + execute for game/software pipelines
+:select_steps_music
+set "TYPE_LABEL=MUSIC"
+set "POSTER_VALUE="
+set "PIPELINE_SCRIPT=run_music.ps1"
+set "CREATE_STEP=2"
+set "STEPS_BACK=select_steps_music"
+set "CONFIRM_TARGET=simple_confirm"
+cls
+echo %BLUE%========================================%RESET%
+echo %BLUE%   MUSIC STEPS SELECTION%RESET%
+echo %BLUE%========================================%RESET%
+echo.
+echo  Available steps:
+echo    1) 📋 parse       - Extract MediaInfo
+echo    2) 🧲 create      - Create .torrent file
+echo    3) 🔍 metadata    - Search Deezer/MusicBrainz for metadata
+echo    4) 🤖 describe    - Generate AI description
+echo    5) 📝 description - Build final BBCode description
+echo.
+echo  Enter comma-separated step numbers (e.g. 3,4,5)
+echo  or press Enter to run ALL steps.
+echo  Type 0 to go back.
+echo.
+set "STEPS_INPUT="
+set /p "STEPS_INPUT=Steps: "
+if "!STEPS_INPUT!"=="0" goto select_type
+if "!STEPS_INPUT!"=="" set "STEPS_OPTION=" & set "STEPS_LABEL=ALL" & goto select_dht
+set "STEPS_OPTION=-steps !STEPS_INPUT!" & set "STEPS_LABEL=!STEPS_INPUT!"
+echo !STEPS_INPUT! | findstr /C:"!CREATE_STEP!" >nul 2>&1
+if not errorlevel 1 goto select_dht
+set "DHT_OPTION=" & set "DHT_LABEL=DISABLED" & goto simple_confirm
+
+:: Shared confirm + execute for game/software/music pipelines
 :simple_confirm
 cls
 echo %BLUE%========================================%RESET%
@@ -337,6 +371,14 @@ set "QUERY_INPUT="
 set /p "QUERY_INPUT=Search title [auto]: "
 set "QUERY_OPTION="
 if not "!QUERY_INPUT!"=="" set "QUERY_OPTION=-query "!QUERY_INPUT!""
+:: Ask for year override (music only)
+set "YEAR_OPTION="
+if "!TYPE_LABEL!"=="MUSIC" (
+    echo.
+    set "YEAR_INPUT="
+    set /p "YEAR_INPUT=Release year [auto]: "
+    if not "!YEAR_INPUT!"=="" set "YEAR_OPTION=-year !YEAR_INPUT!"
+)
 :: Ask for poster image (file path, URL, or browse)
 echo.
 echo  Poster image:
@@ -378,7 +420,7 @@ echo %BLUE%========================================%RESET%
 echo %BLUE%   RUNNING !TYPE_LABEL! PIPELINE%RESET%
 echo %BLUE%========================================%RESET%
 echo.
-powershell -ExecutionPolicy Bypass -Command "& '%~dp0ps\!PIPELINE_SCRIPT!' !DHT_OPTION! !STEPS_OPTION! !QUERY_OPTION! !POSTER_OPTION! $env:MEDIA_PATH"
+powershell -ExecutionPolicy Bypass -Command "& '%~dp0ps\!PIPELINE_SCRIPT!' !DHT_OPTION! !STEPS_OPTION! !QUERY_OPTION! !POSTER_OPTION! !YEAR_OPTION! $env:MEDIA_PATH"
 set "EXIT_CODE=!errorlevel!"
 echo.
 if not !EXIT_CODE! equ 0 goto execute_failed
@@ -540,17 +582,41 @@ powershell -NoProfile -Command "$p=$env:MEDIA_PATH; $n=if(Test-Path -LiteralPath
 set /p FIN_TORRENT=<"%TMPPATH%"
 del "%TMPPATH%" 2>nul
 set "FIN_OUT=%~dp0output"
+rem Detect file/url fields from the upload request file (if generated)
+set "FIN_NFO_FILE="
+set "FIN_BDINFO_FILE="
+set "FIN_KEYWORDS_FILE="
+set "FIN_POSTER_URL="
+set "FIN_BANNER_URL="
+set "FIN_REQ_FILE=!FIN_OUT!\!FIN_TORRENT!_upload_request.txt"
+if exist "!FIN_REQ_FILE!" (
+    for /f "usebackq tokens=1,* delims==" %%A in ("!FIN_REQ_FILE!") do (
+        if /i "%%A"=="nfo_file"      set "FIN_NFO_FILE=%%B"
+        if /i "%%A"=="bdinfo_file"   set "FIN_BDINFO_FILE=%%B"
+        if /i "%%A"=="keywords_file" set "FIN_KEYWORDS_FILE=%%B"
+        if /i "%%A"=="poster"        set "FIN_POSTER_URL=%%B"
+        if /i "%%A"=="banner"        set "FIN_BANNER_URL=%%B"
+    )
+)
 echo  1) 📋 Preview upload request
 echo  2) 📝 Preview description
 echo  3) ℹ  Preview mediainfo
-echo  4) 🚀 Upload to tracker
-echo  5) 🔄 Run another media folder
-echo  0) 🚪 Exit
+echo  4) 📄 Preview NFO
+echo  5) 💿 Preview BDInfo ^& keywords
+echo  6) 🖼  Preview cover
+echo  7) 🏞  Preview banner
+echo  8) 🧲 Torrent contents
+echo  9) 🚀 Upload to tracker
+echo  0) 🔙 Back to main menu
 echo.
-choice /c 123450 /n /m "Select (0-5): "
-if errorlevel 6 goto end
-if errorlevel 5 goto menu
-if errorlevel 4 goto do_upload
+choice /c 1234567890 /n /m "Select: "
+if errorlevel 10 goto menu
+if errorlevel 9 goto do_upload
+if errorlevel 8 goto preview_torrent_contents
+if errorlevel 7 goto preview_banner
+if errorlevel 6 goto preview_cover
+if errorlevel 5 goto preview_bdinfo_keywords
+if errorlevel 4 goto preview_nfo
 if errorlevel 3 goto preview_mediainfo
 if errorlevel 2 goto preview_desc
 if errorlevel 1 goto preview_request
@@ -605,6 +671,106 @@ echo.
 echo  Press any key to return...
 pause > nul
 choice /c yn /n /t 0 /d n > nul 2>&1
+goto final_menu
+
+:preview_nfo
+cls
+if not defined FIN_NFO_FILE (
+    echo  %RED%No NFO file recorded in the upload request.%RESET%
+) else if not exist "!FIN_NFO_FILE!" (
+    echo  %RED%File not found: !FIN_NFO_FILE!%RESET%
+) else (
+    powershell -ExecutionPolicy Bypass -File "%~dp0ps\preview_nfo.ps1" "!FIN_NFO_FILE!"
+)
+echo.
+echo  Press any key to return...
+pause > nul
+choice /c yn /n /t 0 /d n > nul 2>&1
+goto final_menu
+
+:preview_cover
+cls
+if not defined FIN_POSTER_URL (
+    echo  %RED%No cover/poster URL recorded in the upload request.%RESET%
+    echo.
+    echo  Press any key to return...
+    pause > nul
+    choice /c yn /n /t 0 /d n > nul 2>&1
+    goto final_menu
+)
+:preview_cover_menu
+cls
+echo  %CYAN%Cover URL:%RESET% !FIN_POSTER_URL!
+echo.
+echo  1) 🖼  Render in terminal
+echo  2) ✏  Change from TMDB listing
+echo  0) 🔙 Back
+echo.
+choice /c 120 /n /m "Select: "
+if errorlevel 3 goto final_menu
+if errorlevel 2 goto preview_cover_change
+set "PRV_IMG_URL=!FIN_POSTER_URL!"
+call :render_image
+goto final_menu
+:preview_cover_change
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0ps\change_image.ps1" -TorrentName "!FIN_TORRENT!" -OutDir "!FIN_OUT!" -Type poster
+echo.
+echo  Press any key to return...
+pause > nul
+choice /c yn /n /t 0 /d n > nul 2>&1
+goto final_menu
+
+:preview_banner
+cls
+if not defined FIN_BANNER_URL (
+    echo  %RED%No banner URL recorded in the upload request.%RESET%
+    echo.
+    echo  Press any key to return...
+    pause > nul
+    choice /c yn /n /t 0 /d n > nul 2>&1
+    goto final_menu
+)
+:preview_banner_menu
+cls
+echo  %CYAN%Banner URL:%RESET% !FIN_BANNER_URL!
+echo.
+echo  1) 🖼  Render in terminal
+echo  2) ✏  Change from TMDB listing
+echo  0) 🔙 Back
+echo.
+choice /c 120 /n /m "Select: "
+if errorlevel 3 goto final_menu
+if errorlevel 2 goto preview_banner_change
+set "PRV_IMG_URL=!FIN_BANNER_URL!"
+call :render_image
+goto final_menu
+:preview_banner_change
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0ps\change_image.ps1" -TorrentName "!FIN_TORRENT!" -OutDir "!FIN_OUT!" -Type banner
+echo.
+echo  Press any key to return...
+pause > nul
+choice /c yn /n /t 0 /d n > nul 2>&1
+goto final_menu
+
+:render_image
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0ps\render_image.ps1" -Url "!PRV_IMG_URL!"
+echo.
+echo  Press any key to return...
+pause > nul
+choice /c yn /n /t 0 /d n > nul 2>&1
+exit /b 0
+
+:preview_bdinfo_keywords
+cls
+powershell -NoProfile -Command "[Console]::OutputEncoding=[System.Text.Encoding]::UTF8; $bf=$env:FIN_BDINFO_FILE; $kf=$env:FIN_KEYWORDS_FILE; $any=$false; if($bf -and (Test-Path -LiteralPath $bf)){Write-Host '=== BDInfo ===' -ForegroundColor Cyan; Write-Host ''; Get-Content -LiteralPath $bf -Encoding UTF8; Write-Host ''; $any=$true}; if($kf -and (Test-Path -LiteralPath $kf)){Write-Host '=== Keywords ===' -ForegroundColor Cyan; Write-Host ''; Get-Content -LiteralPath $kf -Encoding UTF8; Write-Host ''; $any=$true}; if(-not $any){Write-Host 'No BDInfo or keywords files found.' -ForegroundColor Red}"
+echo.
+echo  Press any key to return...
+pause > nul
+choice /c yn /n /t 0 /d n > nul 2>&1
+goto final_menu
+
+:preview_torrent_contents
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0ps\torrent_contents.ps1" -torrentfile "!FIN_OUT!\!FIN_TORRENT!.torrent" -mediapath "!MEDIA_PATH!"
 goto final_menu
 
 :do_upload
@@ -830,20 +996,22 @@ echo  1) 💾 List saved paths
 echo  2) 📂 List output folder
 echo  3) 🗑  Clear saved paths
 echo  4) 🧹 Clear output folder
-echo  5) 📝 Rename _description.txt to .bbcode
-echo  6) 🔧 Run install
-echo  7) 🗑️ Run uninstall
-echo  8) ❓ Help
-echo  9) 📖 View README
+echo  5) 🔧 Run install
+echo  6) 🗑️ Run uninstall
+echo  7) ❓ Help
+echo  8) 📖 View README
+echo  f) 🏷  Fetch tracker categories
+echo  v) 👁  View categories
 echo  0) 🚪 Back to main menu
 echo.
-choice /c 1234567890 /n /m "Select (0-9): "
-if errorlevel 10 goto menu
-if errorlevel 9 goto maint_readme
-if errorlevel 8 goto maint_help
-if errorlevel 7 goto maint_uninstall
-if errorlevel 6 goto maint_install
-if errorlevel 5 goto maint_rename_desc
+choice /c 123456780fv /n /m "Select (0-8, f, v): "
+if errorlevel 11 goto maint_view_categories
+if errorlevel 10 goto maint_fetch_categories
+if errorlevel 9 goto menu
+if errorlevel 8 goto maint_readme
+if errorlevel 7 goto maint_help
+if errorlevel 6 goto maint_uninstall
+if errorlevel 5 goto maint_install
 if errorlevel 4 goto maint_clear_output
 if errorlevel 3 goto maint_clear_paths
 if errorlevel 2 goto maint_list_output
@@ -921,8 +1089,30 @@ echo %GREEN%Output folder cleared.%RESET%
 timeout /t 2 > nul
 goto maintenance
 
-:maint_rename_desc
-powershell -ExecutionPolicy Bypass -File "%~dp0ps\rename_desc.ps1"
+:maint_fetch_categories
+cls
+echo %BLUE%========================================%RESET%
+echo %BLUE%   🏷  FETCH TRACKER CATEGORIES%RESET%
+echo %BLUE%========================================%RESET%
+echo.
+echo  Logs in to the configured tracker, scrapes the upload form, and writes
+echo  shared\categories_^<host^>.jsonc. Set 'categories_file' in config.jsonc
+echo  to that path to use the fetched list for uploads.
+echo.
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0ps\fetch_categories.ps1"
+echo.
+echo  Press any key to return to maintenance...
+pause > nul
+choice /c yn /n /t 0 /d n > nul 2>&1
+goto maintenance
+
+:maint_view_categories
+cls
+echo %BLUE%========================================%RESET%
+echo %BLUE%   👁  VIEW CATEGORIES%RESET%
+echo %BLUE%========================================%RESET%
+echo.
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0ps\view_categories.ps1"
 echo.
 echo  Press any key to return to maintenance...
 pause > nul

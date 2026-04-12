@@ -5,6 +5,11 @@
     "api_key": "YOUR_API_KEY",
     "username": "",
     "password": "",
+    // Optional override of the category list used for upload/edit.
+    // Relative paths are resolved from the project root. Leave unset to use
+    // shared/categories.jsonc. Populate a tracker-specific file with
+    // `ps\fetch_categories.ps1` (reads tracker credentials from this config).
+    // "categories_file": "shared/categories_example.jsonc",
 
     // ─── Upload Defaults ───────────────────────────────────────
     // Name convention: 1 = UNIT3D format (spaces, normalized), 0 = raw torrent name
@@ -16,6 +21,15 @@
     "personal": 0,
     "anonymous": 0,
     "description": "",
+    // Staff-only fields (0 = off, 1 = on, "ask" = prompt on upload)
+    "internal": 0,
+    "featured": 0,
+    "free": 0,
+    "fl_until": 0,
+    "doubleup": 0,
+    "du_until": 0,
+    "sticky": 0,
+    "mod_queue_opt_in": 0,
 
     // ─── Subtitle Defaults ─────────────────────────────────────
     // Language ID 15 = Bulgarian
@@ -65,8 +79,25 @@
     "twitch_client_id": "YOUR_TWITCH_CLIENT_ID",
     "twitch_client_secret": "YOUR_TWITCH_CLIENT_SECRET",
 
+    // ─── Music Metadata ─────────────────────────────────────────
+    // Provider priority order (comma-separated): deezer, musicbrainz, discogs, lastfm, audiodb, itunes
+    "music_providers": "deezer,musicbrainz,discogs,lastfm,audiodb,itunes",
+    // Discogs personal access token (from discogs.com/settings/developers)
+    "discogs_token": "",
+    // Last.fm API key (from last.fm/api/account/create)
+    "lastfm_api_key": "",
+    // TheAudioDB API key (free key: 523532, or get premium from theaudiodb.com)
+    "audiodb_api_key": "",
+
     // ─── Screenshot Hosting ────────────────────────────────────
     "onlyimage_api_key": "YOUR_ONLYIMAGE_API_KEY",
+
+    // ─── Description Templates ────────────────────────────────
+    // Paths relative to project root (or absolute). Edit the .bbcode files to customise layout.
+    "template_layout_poster": "templates/layout_poster.bbcode",
+    "template_layout_no_poster": "templates/layout_no_poster.bbcode",
+    "template_fallback_movie": "templates/fallback_movie.bbcode",
+    "template_screenshots": "templates/screenshots.bbcode",
 
     // ─── UI Settings ───────────────────────────────────────────
     // Show ASCII logo in main menu: 1 = show, 0 = hide

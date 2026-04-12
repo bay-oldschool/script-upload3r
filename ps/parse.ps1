@@ -35,14 +35,20 @@ if ($singleFile) {
     $VideoFile = Get-Item -LiteralPath $singleFile
 } else {
     $videoExts = @('.mkv', '.mp4', '.avi', '.ts', '.wmv', '.wmv', '.flv', '.m4v', '.mov')
+    $audioExts = @('.flac', '.mp3', '.ogg', '.opus', '.m4a', '.aac', '.wav', '.wma', '.ape', '.wv', '.alac')
+    $mediaExts = $videoExts + $audioExts
     $VideoFile = Get-ChildItem -LiteralPath $directory -Recurse -File |
-        Where-Object { ($videoExts -contains $_.Extension.ToLower()) -and ($_.FullName -notmatch 'sample|trailer|featurette') } |
+        Where-Object {
+            $ext = $_.Extension.ToLower()
+            if ($audioExts -contains $ext) { return $true }
+            ($videoExts -contains $ext) -and ($_.FullName -notmatch 'sample|trailer|featurette')
+        } |
         Sort-Object Name |
         Select-Object -First 1
 }
 
 if (-not $VideoFile) {
-    Write-Host "Warning: no video file found in '$directory'. Skipping." -ForegroundColor Yellow
+    Write-Host "Warning: no media file found in '$directory'. Skipping." -ForegroundColor Yellow
     exit 0
 }
 
@@ -62,17 +68,17 @@ $proc.WaitForExit()
 $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
 [System.IO.File]::WriteAllText($OutputFile, $miOutput, $utf8NoBom)
 
-# Add "Language: English" to audio tracks that have no Language field
+# Normalize audio Language field: missing or unknown/und/zxx -> English
 $miLines = [System.IO.File]::ReadAllLines($OutputFile, [System.Text.Encoding]::UTF8)
 $result = New-Object System.Collections.Generic.List[string]
 $inAudio = $false
 $hasLanguage = $false
-$audioBlockStart = -1
+$unknownLangRe = '^Language(\s+):\s*(unknown|und|undetermined|zxx|mul|mis|)\s*$'
 for ($i = 0; $i -lt $miLines.Count; $i++) {
     $line = $miLines[$i]
     # Detect section headers (lines like "Audio", "Audio #2", "Video", "Text", etc.)
     # In MediaInfo output the blank line comes BEFORE the header, not after
-    if ($line -match '^(Audio|Video|Text|Menu|General)\b' -and $i -gt 0 -and $miLines[$i - 1] -eq '') {
+    if ($line -match '^(Audio|Video|Text|Menu|General|Image|Other)\b' -and $i -gt 0 -and $miLines[$i - 1] -eq '') {
         # Before starting new section, patch previous audio block if needed
         if ($inAudio -and -not $hasLanguage) {
             # Insert "Language: English" before the blank line that ends the audio block
@@ -83,7 +89,13 @@ for ($i = 0; $i -lt $miLines.Count; $i++) {
         $inAudio = $line -match '^Audio'
         $hasLanguage = $false
     }
-    if ($inAudio -and $line -match '^Language\s+:') { $hasLanguage = $true }
+    if ($inAudio -and $line -match '^Language\s+:') {
+        if ($line -imatch $unknownLangRe) {
+            # Overwrite placeholder/unknown language with English, preserving column alignment
+            $line = ($line -replace ':.*$', ': English')
+        }
+        $hasLanguage = $true
+    }
     $result.Add($line)
 }
 # Patch last audio block if it was the final section

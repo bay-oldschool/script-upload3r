@@ -1,13 +1,13 @@
 #!/usr/bin/env pwsh
 <#
 .SYNOPSIS
-    Generates a Bulgarian software description using AI from directory name.
+    Generates a Bulgarian music description using MusicBrainz metadata and AI.
 .PARAMETER directory
     Path to the content directory or file.
 .PARAMETER configfile
     Path to the JSONC config file.
 .PARAMETER query
-    Override auto-detected software title.
+    Override auto-detected album title for MusicBrainz search.
 #>
 param(
     [Parameter(Mandatory = $true, Position = 0)]
@@ -96,51 +96,109 @@ $OutDir = "$PSScriptRoot/../output"
 New-Item -Path $OutDir -ItemType Directory -ErrorAction SilentlyContinue
 $OutputFile = Join-Path -Path $OutDir -ChildPath "${baseName}_description.bbcode"
 
-# Clean software title from dirname
-if ($query) {
-    $cleanName = $query
-} else {
-    $cleanName = $baseName
-    # Remove bracketed tags like [SKIDROW], (GOG), {PLAZA}
-    $cleanName = $cleanName -replace '\s*[\[\(\{][^\]\)\}]+[\]\)\}]\s*', ' '
-    # Normalize separators to dots for consistent regex matching
-    $cleanName = $cleanName -replace '[\s_]', '.'
-    # Remove repack/by author tags
-    $cleanName = $cleanName -replace '(?i)[-\.]by[-\.].+$', ''
-    $cleanName = $cleanName -replace '(?i)[-\.](RePack|Repack|Portable|Cracked|Patched|PreActivated|Activated|Keygen|Serial|Crack)[-\.]?', ''
-    # Remove scene group tags
-    $cleanName = $cleanName -replace '(?i)[-\.](XFORCE|P2P|TNT|AMPED|RECOiL|FOSI|CYGiSO|ECZ|MAGNiTUDE|SSQ|WinAll|Multilingual|x64|x86|Win64|Win32|macOS|Linux)$', ''
-    # Remove version tags like v1.2.3 or 10.2.1
-    $cleanName = $cleanName -replace '(?i)[-\.]v?\d+[\.\d]+[-\.\s]*$', ''
-    # Replace dots/underscores with spaces
-    $cleanName = $cleanName -replace '[._]', ' '
-    # Remove year from end
-    $cleanName = $cleanName -replace '\s*(19|20)\d{2}\s*$', ''
-    $cleanName = ($cleanName -replace '\s+', ' ').Trim()
+# Read music metadata if available (from Deezer or MusicBrainz)
+$MusicFile = Join-Path -Path $OutDir -ChildPath "${baseName}_music.txt"
+$hasMusicData = $false
+if (-not (Test-Path -LiteralPath $MusicFile)) {
+    Write-Host "Music metadata file not found, running music.ps1 first..." -ForegroundColor Yellow
+    $mbArgs = @{ directory = $directory; configfile = $configfile }
+    if ($query) { $mbArgs['query'] = $query }
+    & "$PSScriptRoot/music.ps1" @mbArgs
+}
+if (Test-Path -LiteralPath $MusicFile) { $hasMusicData = $true }
+
+# Parse music metadata (works with both Deezer and MusicBrainz output format)
+$musicId = ''; $musicUrl = ''; $albumName = ''; $artistName = ''; $releaseDate = ''; $releaseYear = ''
+$albumType = ''; $genres = ''; $label = ''; $coverUrl = ''
+$tracks = @()
+
+if ($hasMusicData) {
+    $musicContent = Get-Content -LiteralPath $MusicFile -Encoding UTF8
+    $inFirstResult = $false
+    foreach ($line in $musicContent) {
+        if ($line -match '^\[1\]\s+(.+?)\s+-\s+(.+?)\s+\((\d{4})\)') {
+            $artistName = $matches[1]; $albumName = $matches[2]; $releaseYear = $matches[3]
+            $inFirstResult = $true
+        } elseif ($line -match '^\[1\]\s+(.+?)\s+-\s+(.+)$' -and -not $albumName) {
+            $artistName = $matches[1]; $albumName = $matches[2]
+            $inFirstResult = $true
+        }
+        # Stop reading [1] header fields at [2], but continue scanning for details/tracks
+        if ($line -match '^\[2\]') { $inFirstResult = $false }
+        if ($inFirstResult) {
+            # Deezer fields
+            if ($line -match '^\s+Deezer ID:\s+(.+)') { $musicId = $matches[1].Trim() }
+            if ($line -match '^\s+Deezer URL:\s+(.+)') { $musicUrl = $matches[1].Trim() }
+            # Discogs fields
+            if ($line -match '^\s+Discogs ID:\s+(.+)') { $musicId = $matches[1].Trim() }
+            if ($line -match '^\s+Discogs URL:\s+(.+)') { $musicUrl = $matches[1].Trim() }
+            # MusicBrainz fields
+            if ($line -match '^\s+MBID:\s+(.+)') { $musicId = $matches[1].Trim() }
+            if ($line -match '^\s+MB URL:\s+(.+)') { $musicUrl = $matches[1].Trim() }
+            # Common fields
+            if ($line -match '^\s+Artist:\s+(.+)') { $artistName = $matches[1].Trim() }
+            if ($line -match '^\s+Released:\s+(.+)') { $releaseDate = $matches[1].Trim() }
+            if ($line -match '^\s+Type:\s+(.+)') { $albumType = $matches[1].Trim() }
+        }
+        # Fields that appear in both [1] header and --- Details --- section
+        if ($line -match '^\s+Label:\s+(.+)') { $label = $matches[1].Trim() }
+        if ($line -match '^\s+Genres:\s+(.+)') { $genres = $matches[1].Trim() }
+        if ($line -match '^\s+Cover:\s+(.+)') { $coverUrl = $matches[1].Trim() }
+        if ($line -match '^\s+Track:\s+(.+)') { $tracks += $matches[1].Trim() }
+    }
 }
 
-# Try to extract version from dirname (normalize spaces/underscores to dots for matching)
-$version = ''
-$baseNorm = $baseName -replace '[\s_]', '.'
-if ($baseNorm -match '(?i)v?(\d+(?:\.\d+){1,5})') {
-    $version = $matches[1]
+# Fallback: parse artist/album/year from dirname if no MusicBrainz data
+if (-not $albumName) {
+    if ($query) {
+        $albumName = $query
+    } else {
+        $raw = $baseName
+        # Remove square-bracket tags like [FLAC 24-48] — keep parentheses (part of title)
+        $raw = $raw -replace '\s*\[[^\]]+\]\s*', ' '
+        $raw = $raw -replace '\s*\{[^}]+\}\s*', ' '
+        $raw = $raw -replace '[._]', ' '
+        # Remove format/quality words
+        $raw = $raw -replace '(?i)\b(FLAC|MP3|AAC|OGG|OPUS|WEB|CD|VINYL|LP|Lossless|320|V0|V2|CBR|VBR|16bit|24bit|16-44|24-48|24-96|24-192|Hi-?Res)\b', ' '
+        # Remove scene group tags at end
+        $raw = $raw -replace '(?i)\s*[-](PERFECT|FATHEAD|ENRiCH|YARD|WRE|dL|AMRAP|JLM|D2H|FiH|NBFLAC|DGN|TOSK|ERP)\s*$', ''
+        # Extract year from end
+        if ($raw -match '\s+((?:19|20)\d{2})\s*$') {
+            if (-not $releaseYear) { $releaseYear = $matches[1] }
+            $raw = $raw -replace '\s+(19|20)\d{2}\s*$', ''
+        }
+        $raw = ($raw -replace '\s+', ' ').Trim()
+        # Try to split "Artist - Album"
+        if ($raw -match '^(.+?)\s+-\s+(.+)$') {
+            if (-not $artistName) { $artistName = $matches[1].Trim() }
+            $albumName = $matches[2].Trim()
+        } else {
+            $albumName = $raw
+        }
+    }
 }
 
-Write-Host "Generating AI description for: $cleanName" -ForegroundColor Cyan
-if ($version) { Write-Host "  Version: $version" }
+Write-Host "Generating AI description for: $artistName - $albumName" -NoNewline
+if ($releaseYear) { Write-Host " ($releaseYear)" -NoNewline }
+Write-Host "" -ForegroundColor Cyan
 Write-Host "Using AI: $AiProvider / $AiModel"
 
 # Build prompt
 $promptLines = @()
-$promptLines += "Title: $cleanName"
-if ($version) {
-    $promptLines += "Version: $version"
+if ($artistName) { $promptLines += "Artist: $artistName" }
+$promptLines += "Album: $albumName"
+if ($releaseDate) { $promptLines += "Release Date: $releaseDate" }
+if ($releaseYear) {
+    $promptLines += "Release Year: $releaseYear"
 } else {
-    $promptLines += "Version: NONE"
+    $promptLines += "Release Year: (not provided, write title WITHOUT year in parentheses)"
 }
-
-$promptLines += "Cover: MISSING"
-$promptLines += "Screenshots: MISSING"
+if ($musicId) { $promptLines += "Music ID: $musicId" }
+if ($albumType) { $promptLines += "Type: $albumType" }
+if ($genres) { $promptLines += "Genres: $genres" }
+if ($label) { $promptLines += "Label: $label" }
+if ($coverUrl) { $promptLines += "Cover: $coverUrl" } else { $promptLines += "Cover: MISSING" }
+    # Track listing is injected programmatically after AI output — not sent to AI
 
 $promptText = $promptLines -join "`n"
 
@@ -149,7 +207,7 @@ $promptFile = [System.IO.Path]::GetTempFileName()
 [System.IO.File]::WriteAllText($promptFile, $promptText, $utf8NoBom)
 
 # Call AI
-$systemFile = Join-Path "$PSScriptRoot/.." "shared/ai_system_prompt_software.txt"
+$systemFile = Join-Path "$PSScriptRoot/.." "shared/ai_system_prompt_music.txt"
 $aiArgs = @{
     promptfile = $promptFile
     outputfile = $OutputFile
@@ -192,8 +250,31 @@ if (Test-Path -LiteralPath $OutputFile) {
         [System.IO.File]::WriteAllText($screenFile, ($aiScreenshots -join "`n") + "`n", $utf8NoBom)
         Write-Host "AI suggested $($aiScreenshots.Count) screenshot(s)" -ForegroundColor Cyan
     }
+    # Inject tracklist programmatically (AI can't be trusted with this)
+    if ($tracks.Count -gt 0) {
+        $e_headphones = [char]::ConvertFromUtf32(0x1F3A7)
+        # Build Cyrillic "Траклист" at runtime (PS5.1 encoding safety)
+        $bgTracklist = [char]0x0422 + [char]0x0440 + [char]0x0430 + [char]0x043A + [char]0x043B + [char]0x0438 + [char]0x0441 + [char]0x0442
+        $trackBlock = "${e_headphones} [b]${bgTracklist}:[/b]"
+        foreach ($t in $tracks) { $trackBlock += "`n$t" }
+
+        # Remove AI-generated tracklist section if present
+        $tracklistPattern = '(?m)^.{0,4}\[b\].{0,30}(Tracklist|' + $bgTracklist + ')\S*:\[/b\][\s\S]*?(?=\n.{0,4}\[b\]|\n.{0,4}#|\n\[center\]|\z)'
+        $descText = [regex]::Replace($descText, $tracklistPattern, '')
+        $descText = $descText.TrimEnd()
+
+        # Insert before hashtags line, or append at end
+        $e_label = [char]::ConvertFromUtf32(0x1F3F7)
+        $hashtagPattern = '(?m)(^[^\n]{0,10}#[A-Za-z\p{L}])'
+        if ($descText -match $hashtagPattern) {
+            $descText = [regex]::Replace($descText, $hashtagPattern, "`n${trackBlock}`n`n`$1")
+        } else {
+            $descText += "`n`n${trackBlock}"
+        }
+    }
+
     [System.IO.File]::WriteAllText($OutputFile, $descText, $utf8NoBom)
-    Write-Host "Software description saved to: $OutputFile" -ForegroundColor Green
+    Write-Host "Music description saved to: $OutputFile" -ForegroundColor Green
 } else {
     Write-Host "Error: AI did not produce output" -ForegroundColor Red
     exit 1

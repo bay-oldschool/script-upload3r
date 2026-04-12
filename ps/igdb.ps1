@@ -52,18 +52,19 @@ if ($query) {
     $cleanQuery = $query
 } else {
     $cleanQuery = $baseName
+    # Normalize separators: dots/underscores to spaces
+    $cleanQuery = $cleanQuery -replace '[._]', ' '
     # Remove bracketed tags like [SKIDROW], (GOG), {PLAZA}
     $cleanQuery = $cleanQuery -replace '\s*[\[\(\{][^\]\)\}]+[\]\)\}]\s*', ' '
-    # Remove common scene tags
-    $cleanQuery = $cleanQuery -replace '(?i)[-\.](CODEX|PLAZA|GOG|FLT|SKIDROW|RELOADED|RUNE|DARKSiDERS|TiNYiSO|EMPRESS|SiMPLEX|DOGE|Razor1911|HI2U|ANOMALY|P2P|KaOs|FitGirl|DODI)$', ''
-    # Remove version tags like v1.2.3
-    $cleanQuery = $cleanQuery -replace '(?i)[-\.]v?\d+[\.\d]+\s*$', ''
+    # Remove scene release group (trailing -GROUPNAME, any group)
+    $cleanQuery = $cleanQuery -replace '-[A-Za-z][A-Za-z0-9]+$', ''
     # Remove platform tags
-    $cleanQuery = $cleanQuery -replace '(?i)[-\.](PC|MAC|Linux|PS[345]?|Xbox|Switch|NSW|GOG|Steam)[-\.]?', ' '
+    $cleanQuery = $cleanQuery -replace '(?i)[\s-](PC|MAC|Linux|PS[345]?|Xbox|Switch|NSW|GOG|Steam)[\s-]?', ' '
     # Remove edition/extra tags
-    $cleanQuery = $cleanQuery -replace '(?i)[-\.](Repack|Portable|Deluxe|Ultimate|Gold|GOTY|Premium|Complete|Edition|Collection|Update|DLC|Incl|MULTi\d*)[-\.]?', ' '
-    # Replace dots/underscores with spaces
-    $cleanQuery = $cleanQuery -replace '[._]', ' '
+    $cleanQuery = $cleanQuery -replace '(?i)[\s-](Repack|Portable|Deluxe|Ultimate|Gold|GOTY|Premium|Complete|Edition|Collection|Update|DLC|Incl|MULTi\d*)[\s-]?', ' '
+    # Remove version tags like v1.2.3 or v1.0r4 (after edition/platform so version is at end)
+    $cleanQuery = $cleanQuery -replace '(?i)[\s-]v\d+(\s\d+[a-z]?\d*)*\s*$', ''
+    $cleanQuery = $cleanQuery -replace '(?i)[\s-]\d+(\s\d+)+\s*$', ''
     # Remove year from end (games often have year in dirname)
     $cleanQuery = $cleanQuery -replace '\s*(19|20)\d{2}\s*$', ''
     $cleanQuery = ($cleanQuery -replace '\s+', ' ').Trim()

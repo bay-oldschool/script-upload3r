@@ -83,7 +83,8 @@ if (-not (Test-Path -LiteralPath $configfile)) {
 $config    = (Get-Content -LiteralPath $configfile | Where-Object { $_ -notmatch '^\s*//' }) -join "`n" | ConvertFrom-Json
 $ApiKey    = $config.api_key
 if (-not $ApiKey) { Write-Host "Skipping: 'api_key' not configured in $configfile" -ForegroundColor Yellow; exit 0 }
-$TrackerUrl = $config.tracker_url
+$TrackerUrl = if ($config.tracker_url) { ([string]$config.tracker_url).TrimEnd('/') } else { '' }
+if (-not $TrackerUrl) { Write-Host "Skipping: 'tracker_url' not configured in $configfile" -ForegroundColor Yellow; exit 0 }
 
 $OutDir          = Join-Path $PSScriptRoot "output"
 $RequestFile     = if ($requestfile) { $requestfile } else { Join-Path $OutDir "${TorrentName}_upload_request.txt" }
@@ -124,14 +125,44 @@ $ResolutionId  = $reqData['resolution_id']
 $Tmdb          = $reqData['tmdb']
 $Imdb          = $reqData['imdb']
 $Igdb          = $reqData['igdb']
+$DiscogsId     = $reqData['discogs_id']
 $Personal      = $reqData['personal']
 $Anonymous     = $reqData['anonymous']
+$Internal      = if ($reqData['internal']) { $reqData['internal'] } else { 0 }
+$Featured      = if ($reqData['featured']) { $reqData['featured'] } else { 0 }
+$Free          = if ($reqData['free']) { $reqData['free'] } else { 0 }
+$FlUntil       = if ($reqData['fl_until']) { $reqData['fl_until'] } else { 0 }
+$DoubleUp      = if ($reqData['doubleup']) { $reqData['doubleup'] } else { 0 }
+$DuUntil       = if ($reqData['du_until']) { $reqData['du_until'] } else { 0 }
+$Sticky        = if ($reqData['sticky']) { $reqData['sticky'] } else { 0 }
+$ModQueue      = if ($reqData['mod_queue_opt_in']) { $reqData['mod_queue_opt_in'] } else { 0 }
 $SeasonNumber  = $reqData['season_number']
 $EpisodeNumber = $reqData['episode_number']
 $PosterUrl     = $reqData['poster']
+$BannerUrl     = $reqData['banner']
+$NfoFile       = $reqData['nfo_file']
+$BdinfoFile    = $reqData['bdinfo_file']
 
-# Read categories from categories.jsonc
-$CategoriesFile = Join-Path $PSScriptRoot "shared\categories.jsonc"
+# Keywords from companion _imdb.txt (TMDB keywords) — resolved later when $OutDir is known
+
+# Resolve categories file: config override -> tracker-host-based -> default
+$CategoriesFile = if ($config.categories_file) { [string]$config.categories_file } else { '' }
+if ($CategoriesFile -and -not [System.IO.Path]::IsPathRooted($CategoriesFile)) {
+    $CategoriesFile = Join-Path (Split-Path -Parent $PSScriptRoot) $CategoriesFile
+}
+if (-not $CategoriesFile -or -not (Test-Path -LiteralPath $CategoriesFile)) {
+    $CategoriesFile = ''
+    if ($TrackerUrl) {
+        try {
+            $trackerHost = ([System.Uri]$TrackerUrl).Host -replace '[^A-Za-z0-9]', '_'
+            $hostFile = Join-Path $PSScriptRoot "shared\categories_${trackerHost}.jsonc"
+            if (Test-Path -LiteralPath $hostFile) { $CategoriesFile = $hostFile }
+        } catch { }
+    }
+}
+if (-not $CategoriesFile) {
+    $CategoriesFile = Join-Path $PSScriptRoot "shared\categories.jsonc"
+}
 $allCategories = ([System.IO.File]::ReadAllText($CategoriesFile, $utf8NoBom) -split "`n" | Where-Object { $_ -notmatch '^\s*//' }) -join "`n" | ConvertFrom-Json
 
 # Determine type filter from default category_id
@@ -180,35 +211,34 @@ if (-not $auto.IsPresent) {
         Write-Host "Invalid choice, using default: $($categories[$defaultIdx].name)" -ForegroundColor Yellow
     }
 
-    # Type and resolution pickers — skip for games and software
-    if ($catType -ne 'game' -and $catType -ne 'software') {
-        # Read types from types.jsonc and show picker
-        $TypesFile = Join-Path $PSScriptRoot "shared\types.jsonc"
-        $allTypes = ([System.IO.File]::ReadAllText($TypesFile, $utf8NoBom) -split "`n" | Where-Object { $_ -notmatch '^\s*//' }) -join "`n" | ConvertFrom-Json
+    # Type picker — always shown
+    $TypesFile = Join-Path $PSScriptRoot "shared\types.jsonc"
+    $allTypes = ([System.IO.File]::ReadAllText($TypesFile, $utf8NoBom) -split "`n" | Where-Object { $_ -notmatch '^\s*//' }) -join "`n" | ConvertFrom-Json
 
-        Write-Host ""
-        Write-Host "Select type:" -ForegroundColor Cyan
-        $defaultIdx = 0
-        for ($i = 0; $i -lt $allTypes.Count; $i++) {
-            $marker = ''
-            if ([string]$allTypes[$i].id -eq $TypeId) {
-                $marker = ' *'
-                $defaultIdx = $i
-            }
-            Write-Host "  $($i+1)) $($allTypes[$i].name) (id=$($allTypes[$i].id))${marker}"
+    Write-Host ""
+    Write-Host "Select type:" -ForegroundColor Cyan
+    $defaultIdx = 0
+    for ($i = 0; $i -lt $allTypes.Count; $i++) {
+        $marker = ''
+        if ([string]$allTypes[$i].id -eq $TypeId) {
+            $marker = ' *'
+            $defaultIdx = $i
         }
-        $typeChoice = Read-Host "Type [$($defaultIdx + 1)]"
-        if ($typeChoice -eq 'c') { Write-Host "Cancelled." -ForegroundColor Yellow; exit 2 }
-        if (-not $typeChoice) { $typeChoice = $defaultIdx + 1 }
-        $typeIdx = [int]$typeChoice - 1
-        if ($typeIdx -ge 0 -and $typeIdx -lt $allTypes.Count) {
-            $TypeId = [string]$allTypes[$typeIdx].id
-            Write-Host "Selected: $($allTypes[$typeIdx].name) (type_id=$TypeId)" -ForegroundColor Green
-        } else {
-            Write-Host "Invalid choice, using default: $($allTypes[$defaultIdx].name)" -ForegroundColor Yellow
-        }
+        Write-Host "  $($i+1)) $($allTypes[$i].name) (id=$($allTypes[$i].id))${marker}"
+    }
+    $typeChoice = Read-Host "Type [$($defaultIdx + 1)]"
+    if ($typeChoice -eq 'c') { Write-Host "Cancelled." -ForegroundColor Yellow; exit 2 }
+    if (-not $typeChoice) { $typeChoice = $defaultIdx + 1 }
+    $typeIdx = [int]$typeChoice - 1
+    if ($typeIdx -ge 0 -and $typeIdx -lt $allTypes.Count) {
+        $TypeId = [string]$allTypes[$typeIdx].id
+        Write-Host "Selected: $($allTypes[$typeIdx].name) (type_id=$TypeId)" -ForegroundColor Green
+    } else {
+        Write-Host "Invalid choice, using default: $($allTypes[$defaultIdx].name)" -ForegroundColor Yellow
+    }
 
-        # Read resolutions from resolutions.jsonc and show picker
+    # Resolution picker — skip for games, software, and music
+    if ($catType -ne 'game' -and $catType -ne 'software' -and $catType -ne 'music') {
         $ResFile = Join-Path $PSScriptRoot "shared\resolutions.jsonc"
         $allRes = ([System.IO.File]::ReadAllText($ResFile, $utf8NoBom) -split "`n" | Where-Object { $_ -notmatch '^\s*//' }) -join "`n" | ConvertFrom-Json
 
@@ -249,6 +279,33 @@ if (-not $auto.IsPresent) {
     if ($aChoice -eq 'c') { Write-Host "Cancelled." -ForegroundColor Yellow; exit 2 }
     if ($aChoice -match '^[01]$') { $Anonymous = $aChoice } else { $Anonymous = $cfgAnonymous }
     Write-Host "  anonymous=$Anonymous" -ForegroundColor Green
+
+    # Staff-only fields (only prompt when config value is "ask")
+    $staffFields = @(
+        @{ name = 'internal';         label = 'Internal';              var = 'Internal'; type = 'bool' }
+        @{ name = 'featured';         label = 'Featured';              var = 'Featured'; type = 'bool' }
+        @{ name = 'free';             label = 'Free (0-100)';          var = 'Free';     type = 'int'  }
+        @{ name = 'fl_until';         label = 'Freeleech days';        var = 'FlUntil';  type = 'int'  }
+        @{ name = 'doubleup';         label = 'Double Upload';         var = 'DoubleUp'; type = 'bool' }
+        @{ name = 'du_until';         label = 'Double Upload days';    var = 'DuUntil';  type = 'int'  }
+        @{ name = 'sticky';           label = 'Sticky';                var = 'Sticky';   type = 'bool' }
+        @{ name = 'mod_queue_opt_in'; label = 'Mod Queue';             var = 'ModQueue'; type = 'bool' }
+    )
+    foreach ($sf in $staffFields) {
+        $cfgVal = $config.($sf.name)
+        if ($cfgVal -eq 'ask') {
+            $default = 0
+            $prompt = "$($sf.label) ($( if ($sf.type -eq 'int') { '0-100' } else { '0/1' } )) [$default]"
+            $input = Read-Host $prompt
+            if ($input -eq 'c') { Write-Host "Cancelled." -ForegroundColor Yellow; exit 2 }
+            if ($sf.type -eq 'int' -and $input -match '^\d+$') {
+                Set-Variable -Name $sf.var -Value $input
+            } elseif ($sf.type -eq 'bool' -and $input -match '^[01]$') {
+                Set-Variable -Name $sf.var -Value $input
+            }
+            Write-Host "  $($sf.name)=$(Get-Variable -Name $sf.var -ValueOnly)" -ForegroundColor Green
+        }
+    }
     Write-Host ""
 
     # Confirm season/episode for TV uploads
@@ -275,6 +332,14 @@ if (-not $auto.IsPresent) {
 # Extract MediaInfo: prefer pre-processed file from parse.ps1, fall back to running MediaInfo.exe
 $Mediainfo = ''
 $MediainfoFile = if ($reqData['mediainfo_file'] -and (Test-Path -LiteralPath $reqData['mediainfo_file'])) { $reqData['mediainfo_file'] } else { Join-Path $OutDir "${TorrentName}_mediainfo.txt" }
+
+# Keywords from keywords_file recorded in upload request
+$Keywords = ''
+$KeywordsFile = $reqData['keywords_file']
+if ($KeywordsFile -and (Test-Path -LiteralPath $KeywordsFile)) {
+    $Keywords = [System.IO.File]::ReadAllText($KeywordsFile, [System.Text.Encoding]::UTF8).Trim()
+    if ($Keywords) { Write-Host "Including keywords: $Keywords" -ForegroundColor Cyan }
+}
 if (Test-Path -LiteralPath $MediainfoFile) {
     $Mediainfo = ([System.IO.File]::ReadAllText($MediainfoFile, [System.Text.Encoding]::UTF8) -split "`n" | Where-Object { $_ -notmatch '^Encoding settings' }) -join "`n"
     Write-Host "Using pre-processed mediainfo from: $MediainfoFile"
@@ -318,6 +383,19 @@ try {
     Copy-Item -LiteralPath $TorrentDescFile -Destination $tempDesc -Force
     [System.IO.File]::WriteAllText($tempMediainfo, $Mediainfo, $utf8NoBom)
 
+    # BDInfo field (optional) — sent as separate upload form attribute
+    $tempBdinfo = $null
+    $bdinfoFields = @()
+    if ($BdinfoFile -and (Test-Path -LiteralPath $BdinfoFile)) {
+        $bdinfoText = [System.IO.File]::ReadAllText($BdinfoFile, [System.Text.Encoding]::UTF8)
+        if ($bdinfoText.Trim()) {
+            $tempBdinfo = [System.IO.Path]::GetTempFileName()
+            [System.IO.File]::WriteAllText($tempBdinfo, $bdinfoText, $utf8NoBom)
+            $bdinfoFields = @('-F', "bdinfo=<$tempBdinfo")
+            Write-Host "Including BDInfo from: $BdinfoFile" -ForegroundColor Cyan
+        }
+    }
+
     $UploadUrl = "${TrackerUrl}/api/torrents/upload?api_token=${ApiKey}"
     Write-Host "Uploading to ${TrackerUrl}..."
 
@@ -326,9 +404,11 @@ try {
         $tvFields = @('-F', "season_number=$SeasonNumber", '-F', "episode_number=$EpisodeNumber")
     }
 
+    # Download poster/cover image if available (only for no-meta categories: software, music, other)
     $posterFields = @()
     $tempPoster = $null
-    if ($PosterUrl -and $catType -eq 'software') {
+    $noMeta = $catType -eq 'software' -or $catType -eq 'music' -or $catType -eq 'other'
+    if ($PosterUrl -and $noMeta) {
         try {
             $posterExt = if ($PosterUrl -match '\.(\w{3,4})(?:\?|$)') { ".$($matches[1])" } else { '.jpg' }
             $tempPoster = [System.IO.Path]::GetTempFileName() + $posterExt
@@ -345,21 +425,90 @@ try {
         }
     }
 
-    $response = & curl.exe -s -w "`n%{http_code}" `
+    # Download banner image if available (only for no-meta categories)
+    $tempBanner = $null
+    if ($BannerUrl -and $noMeta) {
+        try {
+            $bannerExt = if ($BannerUrl -match '\.(\w{3,4})(?:\?|$)') { ".$($matches[1])" } else { '.jpg' }
+            $tempBanner = [System.IO.Path]::GetTempFileName() + $bannerExt
+            Write-Host -NoNewline "Downloading banner for upload... "
+            & curl.exe -s -L -o $tempBanner "$BannerUrl"
+            if ((Test-Path -LiteralPath $tempBanner) -and (Get-Item -LiteralPath $tempBanner).Length -gt 1000) {
+                Write-Host "OK ($([math]::Round((Get-Item -LiteralPath $tempBanner).Length/1024))KB)" -ForegroundColor Green
+            } else {
+                Write-Host "FAILED (empty or too small)" -ForegroundColor Yellow
+                $tempBanner = $null
+            }
+        } catch {
+            Write-Host "FAILED ($($_.Exception.Message))" -ForegroundColor Yellow
+            $tempBanner = $null
+        }
+    }
+
+    # Build staff-only fields (only include when non-zero)
+    $staffCurlFields = @()
+    # Resolve any remaining "ask" values to 0
+    if ($Internal -match '\D') { $Internal = 0 }
+    if ($Featured -match '\D') { $Featured = 0 }
+    if ($Free -match '\D')     { $Free = 0 }
+    if ($FlUntil -match '\D')  { $FlUntil = 0 }
+    if ($DoubleUp -match '\D') { $DoubleUp = 0 }
+    if ($DuUntil -match '\D')  { $DuUntil = 0 }
+    if ($Sticky -match '\D')   { $Sticky = 0 }
+    if ($ModQueue -match '\D') { $ModQueue = 0 }
+
+    if ([int]$Internal -ne 0) { $staffCurlFields += '-F'; $staffCurlFields += "internal=$Internal" }
+    if ([int]$Featured -ne 0) { $staffCurlFields += '-F'; $staffCurlFields += "featured=$Featured" }
+    if ([int]$Free -ne 0)     { $staffCurlFields += '-F'; $staffCurlFields += "free=$Free" }
+    if ([int]$FlUntil -ne 0)  { $staffCurlFields += '-F'; $staffCurlFields += "fl_until=$FlUntil" }
+    if ([int]$DoubleUp -ne 0) { $staffCurlFields += '-F'; $staffCurlFields += "doubleup=$DoubleUp" }
+    if ([int]$DuUntil -ne 0)  { $staffCurlFields += '-F'; $staffCurlFields += "du_until=$DuUntil" }
+    if ([int]$Sticky -ne 0)   { $staffCurlFields += '-F'; $staffCurlFields += "sticky=$Sticky" }
+    if ([int]$ModQueue -ne 0) { $staffCurlFields += '-F'; $staffCurlFields += "mod_queue_opt_in=$ModQueue" }
+
+    # NFO file (optional)
+    $nfoFields = @()
+    if ($NfoFile -and (Test-Path -LiteralPath $NfoFile)) {
+        $nfoFields = @('-F', "nfo=@$NfoFile")
+        Write-Host "Including NFO: $NfoFile" -ForegroundColor Cyan
+    }
+
+    # Resolution field (skip for games, software, music)
+    $resFields = @()
+    if ($catType -ne 'game' -and $catType -ne 'software' -and $catType -ne 'music') {
+        $resFields = @('-F', "resolution_id=$ResolutionId")
+    }
+
+    # Discogs id field (only send when present)
+    $discogsFields = @()
+    if ($DiscogsId) {
+        $discogsFields = @('-F', "discogs_id_exists=1", '-F', "discogs_id=$DiscogsId")
+        Write-Host "Including Discogs ID: $DiscogsId" -ForegroundColor Cyan
+    }
+
+    # Capture curl's trace (request headers + response status) to a temp file,
+    # then fold it into the upload log below.
+    $curlTrace = [System.IO.Path]::GetTempFileName()
+    $response = & curl.exe -sS -w "`n%{http_code}" --trace-ascii $curlTrace `
         -F "torrent=@$tempTorrent" `
         -F "name=<$tempName" `
         -F "category_id=$CategoryId" `
         -F "type_id=$TypeId" `
-        -F "resolution_id=$ResolutionId" `
+        @resFields `
         -F "tmdb=$Tmdb" `
         -F "imdb=$Imdb" `
         -F "igdb=$Igdb" `
+        @discogsFields `
+        -F "keywords=$Keywords" `
         -F "personal_release=$Personal" `
         -F "anonymous=$Anonymous" `
         -F "description=<$tempDesc" `
         -F "mediainfo=<$tempMediainfo" `
+        @bdinfoFields `
         @tvFields `
         @posterFields `
+        @staffCurlFields `
+        @nfoFields `
         $UploadUrl
 
     $lines    = $response -split "`n"
@@ -382,9 +531,14 @@ try {
             Write-Host $body
         }
 
-        # Upload cover image via web session (only for software; movie/tv/game covers come from TMDB/IGDB)
-        if ($torrentId -and $catType -eq 'software' -and $PosterUrl -and $tempPoster -and (Test-Path -LiteralPath $tempPoster) -and (Get-Item -LiteralPath $tempPoster).Length -gt 1000) {
-            Write-Host -NoNewline "Uploading cover via web session... "
+        # Upload cover/banner images via web session
+        $hasCover = $tempPoster -and (Test-Path -LiteralPath $tempPoster) -and (Get-Item -LiteralPath $tempPoster).Length -gt 1000
+        $hasBanner = $tempBanner -and (Test-Path -LiteralPath $tempBanner) -and (Get-Item -LiteralPath $tempBanner).Length -gt 1000
+        if ($torrentId -and ($hasCover -or $hasBanner)) {
+            $uploadItems = @()
+            if ($hasCover) { $uploadItems += 'cover' }
+            if ($hasBanner) { $uploadItems += 'banner' }
+            Write-Host -NoNewline "Uploading $($uploadItems -join ' + ') via web session... "
             try {
                 $cfg = (Get-Content -LiteralPath $configfile | Where-Object { $_ -notmatch '^\s*//' }) -join "`n" | ConvertFrom-Json
                 $webUser = $cfg.username
@@ -422,13 +576,19 @@ try {
                             }
                             if ($editCsrf.Success) {
                                 $formToken = $editCsrf.Groups[1].Value
-                                # POST edit with cover (include required fields to avoid clearing them)
+                                # Build image fields
+                                $imageFields = @()
+                                if ($hasCover) { $imageFields += @('-F', "torrent-cover=@$tempPoster") }
+                                if ($hasBanner) { $imageFields += @('-F', "torrent-banner=@$tempBanner") }
+                                # POST edit with cover/banner (include required fields to avoid clearing them)
                                 $coverResp = & curl.exe -s -w "`n%{http_code}" -D $hf -b $cj -X POST `
                                     -F "_token=$formToken" -F "_method=PATCH" `
                                     -F "name=<$tempName" -F "description=<$tempDesc" -F "mediainfo=<$tempMediainfo" `
-                                    -F "category_id=$CategoryId" -F "type_id=$TypeId" -F "resolution_id=$ResolutionId" `
+                                    @bdinfoFields `
+                                    -F "keywords=$Keywords" `
+                                    -F "category_id=$CategoryId" -F "type_id=$TypeId" `
                                     -F "anon=$Anonymous" -F "personal_release=$Personal" `
-                                    -F "torrent-cover=@$tempPoster" `
+                                    @imageFields `
                                     "${TrackerUrl}/torrents/${torrentId}"
                                 $coverCode = ($coverResp -split "`n")[-1].Trim()
                                 if ($coverCode -eq '302') {
@@ -462,28 +622,46 @@ try {
     } else {
         Write-Host "Upload failed (HTTP $httpCode)" -ForegroundColor Red
         # Try to extract error message from JSON response
-        if ($body -match '"message"\s*:\s*"([^"]+)"') {
-            Write-Host $matches[1] -ForegroundColor Red
-            # Show validation details from data field
-            if ($body -match '"data"\s*:\s*"([^"]+)"') {
-                Write-Host "Details: $($matches[1])" -ForegroundColor Yellow
-            } elseif ($body -match '"data"\s*:\s*\{') {
-                try {
-                    $errJson = $body | ConvertFrom-Json
+        $printedJson = $false
+        try {
+            $errJson = $body | ConvertFrom-Json -ErrorAction Stop
+            if ($errJson.message) {
+                Write-Host $errJson.message -ForegroundColor Red
+                $printedJson = $true
+            }
+            if ($errJson.data) {
+                if ($errJson.data -is [string]) {
+                    Write-Host "Details: $($errJson.data)" -ForegroundColor Yellow
+                } else {
                     foreach ($prop in $errJson.data.PSObject.Properties) {
                         foreach ($msg in $prop.Value) {
                             Write-Host "  $($prop.Name): $msg" -ForegroundColor Yellow
                         }
                     }
-                } catch {}
+                }
             }
-        } elseif ($body -match '<!doctype|<html') {
-            $titleMatch = [regex]::Match($body, '<title>([^<]+)')
-            $pageTitle = if ($titleMatch.Success) { $titleMatch.Groups[1].Value } else { 'unknown' }
-            Write-Host "Server returned HTML page: $pageTitle. Check tracker_url in config." -ForegroundColor Red
-        } else {
-            Write-Host $body
+        } catch { }
+        if (-not $printedJson) {
+            if ($body -match '<!doctype|<html') {
+                $titleMatch = [regex]::Match($body, '<title>([^<]+)')
+                $pageTitle = if ($titleMatch.Success) { $titleMatch.Groups[1].Value.Trim() } else { 'unknown' }
+                Write-Host "Server returned HTML page: $pageTitle" -ForegroundColor Red
+                # Laravel's default error view exposes the exception message in <div class="error__body">...</div>
+                $bodyMatch = [regex]::Match($body, '<div[^>]*class="[^"]*error__body[^"]*"[^>]*>([\s\S]*?)</div>')
+                if (-not $bodyMatch.Success) {
+                    # Symfony/Whoops fallback: <h1>...</h1> or <p class="message">...</p>
+                    $bodyMatch = [regex]::Match($body, '<(?:h1|h2|p)[^>]*class="[^"]*(?:exception-message|message)[^"]*"[^>]*>([\s\S]*?)</(?:h1|h2|p)>')
+                }
+                if ($bodyMatch.Success) {
+                    $msg = [regex]::Replace($bodyMatch.Groups[1].Value, '<[^>]+>', '').Trim()
+                    $msg = [System.Net.WebUtility]::HtmlDecode($msg)
+                    if ($msg) { Write-Host "Details: $msg" -ForegroundColor Yellow }
+                }
+            } else {
+                Write-Host $body
+            }
         }
+        Write-Host "See raw request/response in upload log." -ForegroundColor DarkGray
     }
 
     # Write upload log
@@ -503,23 +681,44 @@ try {
         "tmdb:          $Tmdb"
         "imdb:          $Imdb"
         "igdb:          $Igdb"
+        "discogs_id:    $DiscogsId"
         "personal:      $Personal"
         "anonymous:     $Anonymous"
+        "internal:      $Internal"
+        "featured:      $Featured"
+        "free:          $Free"
+        "fl_until:      $FlUntil"
+        "doubleup:      $DoubleUp"
+        "du_until:      $DuUntil"
+        "sticky:        $Sticky"
+        "mod_queue:     $ModQueue"
     )
     if ($catType -eq 'tv') {
         $log += "season_number: $SeasonNumber"
         $log += "episode_number: $EpisodeNumber"
     }
+    if ($NfoFile) { $log += "nfo:           $NfoFile" }
     if ($PosterUrl) { $log += "poster:        $PosterUrl" }
+    if ($BannerUrl) { $log += "banner:        $BannerUrl" }
     $log += "description:   (from $TorrentDescFile)"
     $log += "mediainfo:     ($miLines lines)"
     $log += ""
-    $log += "=== Response ==="
+    $log += "=== Raw Request (curl trace) ==="
+    if ($curlTrace -and (Test-Path -LiteralPath $curlTrace)) {
+        $log += (Get-Content -LiteralPath $curlTrace -Raw -ErrorAction SilentlyContinue)
+    } else {
+        $log += "(trace unavailable)"
+    }
+    $log += ""
+    $log += "=== Raw Response ==="
     $log += "HTTP status:   $httpCode"
     $log += $body
     [System.IO.File]::WriteAllLines($LogFile, $log, $utf8NoBom)
     Write-Host "Log saved to: $LogFile"
 } finally {
     Remove-Item -LiteralPath $tempName, $tempTorrent, $tempDesc, $tempMediainfo -ErrorAction SilentlyContinue
+    if ($tempBdinfo) { Remove-Item -LiteralPath $tempBdinfo -ErrorAction SilentlyContinue }
     if ($tempPoster) { Remove-Item -LiteralPath $tempPoster -ErrorAction SilentlyContinue }
+    if ($tempBanner) { Remove-Item -LiteralPath $tempBanner -ErrorAction SilentlyContinue }
+    if ($curlTrace) { Remove-Item -LiteralPath $curlTrace -ErrorAction SilentlyContinue }
 }

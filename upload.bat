@@ -203,16 +203,41 @@ echo.
 
 set "MEDIA_FILE=!OUT_DIR!\!TORRENT_NAME!_mediainfo.txt"
 
+rem Parse file/url fields from the upload request file (if present)
+set "NFO_FILE="
+set "BDINFO_FILE="
+set "KEYWORDS_FILE="
+set "POSTER_URL="
+set "BANNER_URL="
+if exist "!REQ_FILE!" (
+    for /f "usebackq tokens=1,* delims==" %%A in ("!REQ_FILE!") do (
+        if /i "%%A"=="nfo_file"      set "NFO_FILE=%%B"
+        if /i "%%A"=="bdinfo_file"   set "BDINFO_FILE=%%B"
+        if /i "%%A"=="keywords_file" set "KEYWORDS_FILE=%%B"
+        if /i "%%A"=="poster"        set "POSTER_URL=%%B"
+        if /i "%%A"=="banner"        set "BANNER_URL=%%B"
+    )
+)
 echo  %CYAN%Preview:%RESET%
 echo  1) 📋 Preview upload request
 echo  2) 📝 Preview description
 echo  3) ℹ  Preview mediainfo
+echo  4) 📄 Preview NFO
+echo  5) 💿 Preview BDInfo ^& keywords
+echo  6) 🖼  Preview cover
+echo  7) 🏞  Preview banner
+echo  8) 🧲 Torrent contents
 echo  0) 🚪 Back
 echo.
 
 :upload_action
-choice /c yn1230 /n /m "Use auto mode (skip prompts)? (y/n/1/2/3/0) [n]: "
-if errorlevel 6 goto menu
+choice /c yn123456780 /n /m "Use auto mode (skip prompts)? (y/n/1/2/3/4/5/6/7/8/0) [n]: "
+if errorlevel 11 goto menu
+if errorlevel 10 goto upl_preview_torrent_contents
+if errorlevel 9 goto upl_preview_banner
+if errorlevel 8 goto upl_preview_cover
+if errorlevel 7 goto upl_preview_bdinfo_keywords
+if errorlevel 6 goto upl_preview_nfo
 if errorlevel 5 goto upl_preview_media
 if errorlevel 4 goto upl_preview_desc
 if errorlevel 3 goto upl_preview_req
@@ -308,7 +333,7 @@ echo.
 echo  Press any key to return...
 pause > nul
 rem Flush any extra buffered input
-choice /c yn1230 /n /t 0 /d n > nul 2>&1
+choice /c yn123456780 /n /t 0 /d n > nul 2>&1
 goto ask_auto
 
 :upl_preview_desc
@@ -318,7 +343,7 @@ if not exist "!DESC_FILE!" (
     echo.
     echo  Press any key to return...
     pause > nul
-    choice /c yn1230 /n /t 0 /d n > nul 2>&1
+    choice /c yn123456780 /n /t 0 /d n > nul 2>&1
     goto ask_auto
 )
 powershell -ExecutionPolicy Bypass -File "%~dp0ps\preview_bbcode.ps1" "!DESC_FILE!"
@@ -340,7 +365,7 @@ echo.
 echo  Press any key to return...
 pause > nul
 rem Flush any extra buffered input
-choice /c yn1230 /n /t 0 /d n > nul 2>&1
+choice /c yn123456780 /n /t 0 /d n > nul 2>&1
 goto ask_auto
 
 :upl_preview_media
@@ -356,8 +381,104 @@ echo.
 echo  Press any key to return...
 pause > nul
 rem Flush any extra buffered input
-choice /c yn1230 /n /t 0 /d n > nul 2>&1
+choice /c yn123456780 /n /t 0 /d n > nul 2>&1
 goto ask_auto
+
+:upl_preview_nfo
+cls
+if not defined NFO_FILE (
+    echo %RED%No NFO file recorded in the upload request.%RESET%
+) else if not exist "!NFO_FILE!" (
+    echo %RED%File not found: !NFO_FILE!%RESET%
+) else (
+    powershell -ExecutionPolicy Bypass -File "%~dp0ps\preview_nfo.ps1" "!NFO_FILE!"
+)
+echo.
+echo  Press any key to return...
+pause > nul
+choice /c yn123456780 /n /t 0 /d n > nul 2>&1
+goto ask_auto
+
+:upl_preview_bdinfo_keywords
+cls
+powershell -NoProfile -Command "[Console]::OutputEncoding=[System.Text.Encoding]::UTF8; $bf=$env:BDINFO_FILE; $kf=$env:KEYWORDS_FILE; $any=$false; if($bf -and (Test-Path -LiteralPath $bf)){Write-Host '=== BDInfo ===' -ForegroundColor Cyan; Write-Host ''; Get-Content -LiteralPath $bf -Encoding UTF8; Write-Host ''; $any=$true}; if($kf -and (Test-Path -LiteralPath $kf)){Write-Host '=== Keywords ===' -ForegroundColor Cyan; Write-Host ''; Get-Content -LiteralPath $kf -Encoding UTF8; Write-Host ''; $any=$true}; if(-not $any){Write-Host 'No BDInfo or keywords files found.' -ForegroundColor Red}"
+echo.
+echo  Press any key to return...
+pause > nul
+choice /c yn123456780 /n /t 0 /d n > nul 2>&1
+goto ask_auto
+
+:upl_preview_cover
+cls
+if not defined POSTER_URL (
+    echo  %RED%No cover/poster URL recorded in the upload request.%RESET%
+    echo.
+    echo  Press any key to return...
+    pause > nul
+    choice /c yn123456780 /n /t 0 /d n > nul 2>&1
+    goto ask_auto
+)
+echo  %CYAN%Cover URL:%RESET% !POSTER_URL!
+echo.
+echo  1) 🖼  Render in terminal
+echo  2) ✏  Change from TMDB listing
+echo  0) 🔙 Back
+echo.
+choice /c 120 /n /m "Select: "
+if errorlevel 3 goto ask_auto
+if errorlevel 2 goto upl_preview_cover_change
+set "PRV_IMG_URL=!POSTER_URL!"
+call :upl_render_image
+goto ask_auto
+:upl_preview_cover_change
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0ps\change_image.ps1" -TorrentName "!TORRENT_NAME!" -OutDir "!OUT_DIR!" -Type poster
+echo.
+echo  Press any key to return...
+pause > nul
+choice /c yn123456780 /n /t 0 /d n > nul 2>&1
+goto ask_auto
+
+:upl_preview_banner
+cls
+if not defined BANNER_URL (
+    echo  %RED%No banner URL recorded in the upload request.%RESET%
+    echo.
+    echo  Press any key to return...
+    pause > nul
+    choice /c yn123456780 /n /t 0 /d n > nul 2>&1
+    goto ask_auto
+)
+echo  %CYAN%Banner URL:%RESET% !BANNER_URL!
+echo.
+echo  1) 🖼  Render in terminal
+echo  2) ✏  Change from TMDB listing
+echo  0) 🔙 Back
+echo.
+choice /c 120 /n /m "Select: "
+if errorlevel 3 goto ask_auto
+if errorlevel 2 goto upl_preview_banner_change
+set "PRV_IMG_URL=!BANNER_URL!"
+call :upl_render_image
+goto ask_auto
+:upl_preview_banner_change
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0ps\change_image.ps1" -TorrentName "!TORRENT_NAME!" -OutDir "!OUT_DIR!" -Type banner
+echo.
+echo  Press any key to return...
+pause > nul
+choice /c yn123456780 /n /t 0 /d n > nul 2>&1
+goto ask_auto
+
+:upl_preview_torrent_contents
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0ps\torrent_contents.ps1" -torrentfile "!TOR_FILE!" -mediapath "!USER_PATH!"
+goto ask_auto
+
+:upl_render_image
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0ps\render_image.ps1" -Url "!PRV_IMG_URL!"
+echo.
+echo  Press any key to return...
+pause > nul
+choice /c yn123456780 /n /t 0 /d n > nul 2>&1
+exit /b 0
 
 :run_upload
 cls

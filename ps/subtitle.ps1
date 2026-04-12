@@ -107,7 +107,7 @@ if (-not (Test-Path -LiteralPath $configfile)) {
 
 # Read tracker credentials from config
 $config     = (Get-Content -LiteralPath $configfile | Where-Object { $_ -notmatch '^\s*//' }) -join "`n" | ConvertFrom-Json
-$TrackerUrl = $config.tracker_url
+$TrackerUrl = if ($config.tracker_url) { ([string]$config.tracker_url).TrimEnd('/') } else { '' }
 $Username   = $config.username
 $Password   = $config.password
 $DefaultAnon = if ($config.anonymous) { [int]$config.anonymous } else { 0 }

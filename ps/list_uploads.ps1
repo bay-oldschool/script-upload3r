@@ -28,7 +28,7 @@ if (-not (Test-Path -LiteralPath $configfile)) {
 
 $config     = (Get-Content -LiteralPath $configfile | Where-Object { $_ -notmatch '^\s*//' }) -join "`n" | ConvertFrom-Json
 $ApiKey     = $config.api_key
-$TrackerUrl = $config.tracker_url
+$TrackerUrl = if ($config.tracker_url) { ([string]$config.tracker_url).TrimEnd('/') } else { '' }
 $Username   = $config.username
 
 if (-not $ApiKey) {

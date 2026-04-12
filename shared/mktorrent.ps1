@@ -26,7 +26,12 @@ $resolvedPath = (Resolve-Path -LiteralPath $path).Path.TrimEnd('\')
 $isDir = (Get-Item -LiteralPath $resolvedPath) -is [System.IO.DirectoryInfo]
 
 if ($isDir) {
-    $files = Get-ChildItem -LiteralPath $resolvedPath -Recurse -File | Sort-Object FullName
+    $videoExts = @('.mkv','.mp4','.avi','.wmv','.mov','.m4v','.mpg','.mpeg','.ts','.m2ts')
+    $files = Get-ChildItem -LiteralPath $resolvedPath -Recurse -File | Where-Object {
+        $inTrailerDir = $_.FullName -match '(?i)[/\\]trailers?[/\\]'
+        $isTrailerFile = $_.Name -match '(?i)(^|[\s._-])trailer' -and $videoExts -contains $_.Extension.ToLower()
+        -not $inTrailerDir -and -not $isTrailerFile
+    } | Sort-Object FullName
 } else {
     $files = @(Get-Item -LiteralPath $resolvedPath)
     $resolvedPath = Split-Path $resolvedPath -Parent
