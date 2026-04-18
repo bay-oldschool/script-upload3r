@@ -3,10 +3,11 @@
 # Requires: magick.exe (ImageMagick 7+) in PATH
 
 param(
-    [int]$Width = 80
+    [int]$Width = 80,
+    [string]$Path = ''
 )
 
-$logoPath = "$PSScriptRoot\..\shared\logo.png"
+$logoPath = if ($Path) { $Path } else { "$PSScriptRoot\..\shared\logo.png" }
 if (-not (Test-Path $logoPath)) {
     Write-Host "Logo image not found: $logoPath" -ForegroundColor Yellow
     exit 1

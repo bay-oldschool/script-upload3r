@@ -33,11 +33,15 @@ if (-not $CategoriesFile -or -not (Test-Path -LiteralPath $CategoriesFile)) {
     $CategoriesFile = ''
     if ($TrackerUrl) {
         try {
-            $trackerHost = ([System.Uri]$TrackerUrl).Host -replace '[^A-Za-z0-9]', '_'
-            $hostFile = Join-Path $RootDir "shared\categories_${trackerHost}.jsonc"
-            if (Test-Path -LiteralPath $hostFile) {
-                $CategoriesFile = $hostFile
-                Write-Host "Using tracker-host file: $hostFile" -ForegroundColor DarkGray
+            $trackerHost = ([System.Uri]$TrackerUrl).Host -replace '\.[^.]+$','' -replace '[^A-Za-z0-9]','_'
+            $outFile = Join-Path $RootDir "output\categories_${trackerHost}.jsonc"
+            $sharedFile = Join-Path $RootDir "shared\categories_${trackerHost}.jsonc"
+            if (Test-Path -LiteralPath $outFile) {
+                $CategoriesFile = $outFile
+                Write-Host "Using tracker-host file: $outFile" -ForegroundColor DarkGray
+            } elseif (Test-Path -LiteralPath $sharedFile) {
+                $CategoriesFile = $sharedFile
+                Write-Host "Using tracker-host file: $sharedFile" -ForegroundColor DarkGray
             }
         } catch { }
     }

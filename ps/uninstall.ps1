@@ -47,7 +47,9 @@ if (Get-Command magick -ErrorAction SilentlyContinue) { $hasMagick = $true }
 elseif (Get-ChildItem 'C:\Program Files\ImageMagick-*' -Directory -ErrorAction SilentlyContinue) { $hasMagick = $true }
 if ($hasMagick) { $tools += @{ Name = $S.Magick; Tag = "magick" } }
 
-$hasChafa = [bool](Get-Command chafa -ErrorAction SilentlyContinue)
+$hasChafa = $false
+if (Test-Path "$ToolsDir\chafa.exe") { $hasChafa = $true }
+elseif (Get-Command chafa -ErrorAction SilentlyContinue) { $hasChafa = $true }
 if ($hasChafa) { $tools += @{ Name = $S.Chafa; Tag = "chafa" } }
 
 if ($tools.Count -eq 0) {
@@ -97,7 +99,7 @@ $tags = $selected | ForEach-Object { $_.Tag }
 # --- Uninstall selected ---
 if ($tags -contains "ffmpeg") {
     Write-Host $S.RmFfmpeg -ForegroundColor Yellow
-    foreach ($exe in @("ffmpeg.exe", "ffprobe.exe")) {
+    foreach ($exe in @("ffmpeg.exe", "ffprobe.exe", ".ffmpeg_target")) {
         $path = Join-Path $ToolsDir $exe
         if (Test-Path $path) { Remove-Item $path -Force }
     }
@@ -114,23 +116,44 @@ if ($tags -contains "mediainfo") {
 $wingetCmd = Get-Command winget -ErrorAction SilentlyContinue
 
 if ($tags -contains "magick") {
-    if ($wingetCmd) {
-        Write-Host $S.RmMagick -ForegroundColor Yellow
-        & winget uninstall ImageMagick.ImageMagick --accept-source-agreements
-        Write-Host $S.OkMagick -ForegroundColor Green
-    } else {
-        Write-Host $S.NoWinget -ForegroundColor Yellow
+    Write-Host $S.RmMagick -ForegroundColor Yellow
+    $removed = $false
+    # Try Inno Setup uninstaller first — works for both winget and manual Inno installs
+    $magickDirs = @(Get-ChildItem 'C:\Program Files\ImageMagick-*' -Directory -ErrorAction SilentlyContinue)
+    foreach ($dir in $magickDirs) {
+        $uninsExe = Join-Path $dir.FullName 'unins000.exe'
+        if (Test-Path $uninsExe) {
+            Write-Host "  Running $uninsExe /VERYSILENT..." -ForegroundColor Cyan
+            $p = Start-Process -FilePath $uninsExe -ArgumentList "/VERYSILENT /NORESTART" -Wait -PassThru
+            if ($p.ExitCode -eq 0) { $removed = $true }
+            else { Write-Host "  Uninstaller exited with code $($p.ExitCode)" -ForegroundColor Yellow }
+        }
     }
+    # Fall back to winget if Inno uninstaller missing/failed and winget available
+    if (-not $removed -and $wingetCmd) {
+        & winget uninstall ImageMagick.ImageMagick --accept-source-agreements
+        $removed = $true
+    }
+    if ($removed) { Write-Host $S.OkMagick -ForegroundColor Green }
+    elseif (-not $wingetCmd) { Write-Host $S.NoWinget -ForegroundColor Yellow }
 }
 
 if ($tags -contains "chafa") {
-    if ($wingetCmd) {
-        Write-Host $S.RmChafa -ForegroundColor Yellow
-        & winget uninstall hpjansson.chafa --accept-source-agreements
-        Write-Host $S.OkChafa -ForegroundColor Green
-    } else {
-        Write-Host $S.NoWinget -ForegroundColor Yellow
+    Write-Host $S.RmChafa -ForegroundColor Yellow
+    $removed = $false
+    # Zip-extracted chafa lives in tools/
+    $chafaExe = Join-Path $ToolsDir "chafa.exe"
+    if (Test-Path $chafaExe) {
+        Remove-Item $chafaExe -Force
+        $removed = $true
     }
+    # winget-installed chafa (independent — run only if winget has it registered)
+    if ($wingetCmd) {
+        & winget uninstall hpjansson.chafa --accept-source-agreements 2>&1 | Out-Null
+        if ($LASTEXITCODE -eq 0) { $removed = $true }
+    }
+    if ($removed) { Write-Host $S.OkChafa -ForegroundColor Green }
+    elseif (-not $wingetCmd) { Write-Host $S.NoWinget -ForegroundColor Yellow }
 }
 
 $sw.Stop()

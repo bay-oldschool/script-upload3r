@@ -85,7 +85,8 @@ while ($true) {
     if ($pick -match '^[rR]\s*(\d+)$') {
         $idx = [int]$matches[1] - 1
         if ($idx -ge 0 -and $idx -lt $urls.Count -and $urls[$idx]) {
-            & (Join-Path $PSScriptRoot 'render_image.ps1') -Url $urls[$idx]
+            $renderWidth = if ($Type -eq 'poster') { 40 } else { 0 }
+            & (Join-Path $PSScriptRoot 'render_image.ps1') -Url $urls[$idx] -Width $renderWidth
         } else {
             Write-Host "Out of range." -ForegroundColor Yellow
         }

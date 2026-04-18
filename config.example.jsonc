@@ -5,6 +5,8 @@
     "api_key": "YOUR_API_KEY",
     "username": "",
     "password": "",
+    // Base32 TOTP secret for 2FA login (leave empty if 2FA is disabled)
+    "two_factor_secret": "",
     // Optional override of the category list used for upload/edit.
     // Relative paths are resolved from the project root. Leave unset to use
     // shared/categories.jsonc. Populate a tracker-specific file with
@@ -98,12 +100,16 @@
     "template_layout_no_poster": "templates/layout_no_poster.bbcode",
     "template_fallback_movie": "templates/fallback_movie.bbcode",
     "template_screenshots": "templates/screenshots.bbcode",
+    // ASCII logo injected into generated NFOs ({{LOGO}} placeholder in shared/default.nfo). Relative to script dir or absolute.
+    "nfo_logo_path": "shared/logo_ascii.txt",
 
     // ─── UI Settings ───────────────────────────────────────────
     // Show ASCII logo in main menu: 1 = show, 0 = hide
     "show_logo": 1,
     // Logo source: "text" = colored ASCII from logo.txt, "image" = render logo.png
     "logo_source": "image",
+    // Path to image used by "image" source (relative to script dir or absolute). Falls back to shared/logo.png if unset or missing.
+    "logo_image_path": "shared/logo.png",
     // Display mode for "image" source: "ansi" = half-blocks, "block" = shade chars (░▒▓█), "ascii" = ASCII chars, "direct" = Sixel
     "logo_display": "direct",
     // Logo width in characters (all image display modes)

@@ -6,7 +6,7 @@
 .PARAMETER configfile
     Path to config.jsonc (default: project root).
 .PARAMETER out
-    Output JSONC path (default: shared/categories_<tracker_host>.jsonc).
+    Output JSONC path (default: output/categories_<tracker_host>.jsonc).
 #>
 param(
     [string]$configfile,
@@ -28,35 +28,28 @@ $config = (Get-Content -LiteralPath $configfile | Where-Object { $_ -notmatch '^
 $TrackerUrl = if ($config.tracker_url) { ([string]$config.tracker_url).TrimEnd('/') } else { '' }
 $webUser = $config.username
 $webPass = $config.password
+$webTfa  = if ($config.two_factor_secret) { $config.two_factor_secret } else { '' }
 if (-not $TrackerUrl) { Write-Host "tracker_url not set in config" -ForegroundColor Red; exit 1 }
 if (-not $webUser -or -not $webPass) { Write-Host "username/password not set in config" -ForegroundColor Red; exit 1 }
 
+. (Join-Path (Join-Path $RootDir 'shared') 'web_login.ps1')
+
 if (-not $out) {
-    $trackerHost = ([System.Uri]$TrackerUrl).Host -replace '[^A-Za-z0-9]', '_'
-    $out = Join-Path $RootDir "shared\categories_${trackerHost}.jsonc"
+    $trackerHost = ([System.Uri]$TrackerUrl).Host -replace '\.[^.]+$','' -replace '[^A-Za-z0-9]','_'
+    $out = Join-Path $RootDir "output\categories_${trackerHost}.jsonc"
 }
 
-$cj = [System.IO.Path]::GetTempFileName()
+$fcOutDir = Join-Path $RootDir 'output'
 $hf = [System.IO.Path]::GetTempFileName()
 try {
-    Write-Host "Logging in to $TrackerUrl ..." -ForegroundColor Cyan
-    $loginPage = (& curl.exe -s -c $cj -b $cj "${TrackerUrl}/login") -join "`n"
-    $cs = ''; if ($loginPage -match 'name="_token"\s*value="([^"]+)"') { $cs = $matches[1] }
-    $ca = ''; if ($loginPage -match 'name="_captcha"\s*value="([^"]+)"') { $ca = $matches[1] }
-    $rn = ''; $rv = ''
-    if ($loginPage -match 'name="([A-Za-z0-9]{16})"\s*value="(\d+)"') { $rn = $matches[1]; $rv = $matches[2] }
-    if (-not $cs) { Write-Host "Could not extract _token from /login" -ForegroundColor Red; exit 1 }
-    $rf = @(); if ($rn) { $rf = @('-d', "${rn}=${rv}") }
-    & curl.exe -s -D $hf -o NUL -c $cj -b $cj `
-        -d "_token=$cs" -d "_captcha=$ca" -d "_username=" `
-        -d "username=$webUser" --data-urlencode "password=$webPass" `
-        -d "remember=on" @rf "${TrackerUrl}/login"
-    $ll = ''
-    foreach ($h in Get-Content -LiteralPath $hf) {
-        if ($h -match '^Location:\s*(.+)') { $ll = $matches[1].Trim() }
+    $cj = Get-CachedCookieJar -TrackerUrl $TrackerUrl -Username $webUser `
+        -Password $webPass -TwoFactorSecret $webTfa -OutputDir $fcOutDir
+    if (-not $cj) {
+        Write-Host "Login failed. Check credentials and two_factor_secret in config.jsonc." -ForegroundColor Red
+        Write-Host "Press any key to continue ..." -ForegroundColor Yellow
+        $null = $Host.UI.RawUI.ReadKey('NoEcho,IncludeKeyDown')
+        exit 1
     }
-    if ($ll -match '/login') { Write-Host "Login failed (redirected back to /login)" -ForegroundColor Red; exit 1 }
-    if ($ll) { & curl.exe -s -o NUL -c $cj -b $cj --max-time 15 $ll | Out-Null }
 
     Write-Host "Fetching upload form ..." -ForegroundColor Cyan
     $createPage = (& curl.exe -s -c $cj -b $cj --max-time 30 "${TrackerUrl}/torrents/create") -join "`n"
@@ -91,14 +84,17 @@ try {
         $id = [int]$m.Groups['id'].Value
         $name = [System.Net.WebUtility]::HtmlDecode($m.Groups['name'].Value).Trim()
         if ($id -le 0 -or -not $name) { continue }
-        # Heuristic type from name
-        $nl = $name.ToLower()
+        # Heuristic type from name. Cyrillic keywords are encoded as \uXXXX so this
+        # file stays pure ASCII (PS5.1 reads .ps1 with the system code page, not UTF-8).
+        # The .NET regex engine expands the escapes at match time, so patterns still hit
+        # Bulgarian / Russian category labels like "Филми", "Сериали", "Игри".
+        $nl = $name.ToLowerInvariant()
         $type = 'movie'
-        if     ($nl -match 'music|flac|mp3|lossless|vinyl|dts|hi-?res') { $type = 'music' }
-        elseif ($nl -match 'tv|series|\banime\b|\bseason\b') { $type = 'tv' }
-        elseif ($nl -match 'game|xbox|playstation|nintendo|console') { $type = 'game' }
-        elseif ($nl -match 'software|program|app|mac|android|ios|gsm|mobile') { $type = 'software' }
-        elseif ($nl -match 'xxx|adult') { $type = 'other' }
+        if     ($nl -match 'music|flac|mp3|lossless|vinyl|dts|hi-?res|\u043C\u0443\u0437\u0438\u043A') { $type = 'music' }
+        elseif ($nl -match 'tv|series|\banime\b|\bseason\b|\u0441\u0435\u0440\u0438\u0430\u043B|\u0430\u043D\u0438\u043C\u0435') { $type = 'tv' }
+        elseif ($nl -match 'game|xbox|playstation|nintendo|console|\u0438\u0433\u0440\u0430|\u0438\u0433\u0440\u0438') { $type = 'game' }
+        elseif ($nl -match 'software|program|app|mac|android|ios|gsm|mobile|\u0441\u043E\u0444\u0442|\u043F\u0440\u0438\u043B\u043E\u0436') { $type = 'software' }
+        elseif ($nl -match 'xxx|adult|\u043F\u043E\u0440\u043D\u043E') { $type = 'other' }
         $entries += [pscustomobject]@{ name = $name; id = $id; type = $type }
     }
 
@@ -110,7 +106,11 @@ try {
 
     $lines = [System.Collections.Generic.List[string]]::new()
     $lines.Add("// Auto-generated by ps/fetch_categories.ps1 from ${TrackerUrl}/torrents/create")
-    $lines.Add("// Types are guessed from names - edit by hand if needed.")
+    $lines.Add("// WARNING: the ""type"" field is a best-guess from each category name and")
+    $lines.Add("// WILL be wrong for trackers with non-English or custom category labels.")
+    $lines.Add("// Review every row and correct any wrong type before uploading, otherwise")
+    $lines.Add("// the pipeline may run the wrong flow (e.g. movie flow on a game category).")
+    $lines.Add("// Valid types: movie, tv, music, game, software, other")
     $lines.Add("[")
     for ($i = 0; $i -lt $entries.Count; $i++) {
         $e = $entries[$i]
@@ -123,7 +123,13 @@ try {
     [System.IO.File]::WriteAllText($out, ($lines -join "`r`n") + "`r`n", $utf8NoBom)
     Write-Host ""
     Write-Host "Wrote: $out" -ForegroundColor Green
-    Write-Host "Point 'categories_file' in config.jsonc at this path to use it." -ForegroundColor Cyan
+    Write-Host "The pipeline will automatically use this file for uploads." -ForegroundColor Cyan
+    Write-Host "To override, set `"categories_file`" in config.jsonc to a different path." -ForegroundColor DarkGray
+    Write-Host ""
+    Write-Host "WARNING: category 'type' values were auto-guessed from names and may be wrong." -ForegroundColor Yellow
+    Write-Host "         Open the file above and correct any mismatches before uploading" -ForegroundColor Yellow
+    Write-Host "         (valid types: movie, tv, music, game, software, other)." -ForegroundColor Yellow
 } finally {
-    Remove-Item -LiteralPath $cj, $hf -ErrorAction SilentlyContinue
+    $toRemove = @($hf) + @($cj) | Where-Object { $_ }
+    if ($toRemove) { Remove-Item -LiteralPath $toRemove -ErrorAction SilentlyContinue }
 }

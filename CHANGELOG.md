@@ -1,5 +1,45 @@
 # Changelog
 
+## v5.2.0 — 2026-04-18
+
+### New Features
+- **2FA (TOTP) web login**: pure PS5.1 RFC 6238 TOTP generator (`shared/totp.ps1`) and centralized login helper (`shared/web_login.ps1`) — all web-session scripts (edit, delete, upload, subtitle, fetch_categories, list_uploads_web) now support 2FA, with rate-limit detection (429 auto-retry) and per-host session cookie caching (90-minute TTL in `output/.web_cookie_<host>`)
+- **Windows 10 (build 14393) compatibility**: install script auto-downloads `curl.exe` on systems that ship without it; downloads chafa/ImageMagick directly when winget is unavailable; OS-build-aware ffmpeg picker (BtbN for Win10 1809+, Gyan 4.4 for older Windows) with `.ffmpeg_target` marker and auto-reinstall on mismatch; `run.bat` emoji icons degrade to ASCII on legacy conhost, sixel logo falls back to text
+- **TLS 1.2 fix script** (`ps/fix_tls.ps1`): diagnose and repair TLS 1.2 for SChannel and .NET (`SchUseStrongCrypto`) on legacy Windows; skipped automatically on modern builds where `SystemDefault` already includes TLS 1.2; added to the maintenance menu
+- **Default NFO for games/software**: `description.ps1` now auto-generates a CP437 NFO for game and software uploads with a filesystem-derived summary (primary file, format, size, file count, heuristic type label, IGDB link for games)
+- **Parametric logo generator** (`shared/make_logo.ps1`): GDI+ text-to-PNG renderer with flat/linear/radial gradient fills, optional soft glow, hex color parsing, and auto-padding to glyph bounds — used to produce custom `logo.png` images
+- **Edit config menu item**: `run.bat` maintenance menu now includes an **Edit config** option that opens `config.jsonc` in Notepad; **Edit categories** entry opens the most recent `output/categories_*.jsonc`
+- **Renderer parameter** for `render_image.ps1`: `-Renderer` flag chooses between `chafa`, `magick`, or `auto` (default)
+
+### Improvements
+- **Web session cache** moved from `shared/` to `output/` alongside other pipeline artifacts; `Get-CachedCookieJar` returns a disposable temp copy so `curl -c` calls no longer corrupt the cached session
+- **`cat_type` hint in upload request**: `description.ps1` now writes `cat_type=<software|game|music|tv|movie>` so upload/edit prefer the explicit hint over deriving type from `category_id` — fixes software/game/music category filter on trackers whose category list has no matching type entry; upload falls back to showing every category when the filter yields an empty list
+- **Music provider fallbacks** (`music.ps1`): when an override query finds nothing on a provider, retry the same provider with the cleaned auto-detected query before moving on; short-album retry (strip parenthesized subtitles) added to MusicBrainz, AudioDB, Last.fm, and iTunes (previously only Deezer/Discogs); skip artist-only fallback while auto-detect is pending so cleaned album name is tried first
+- **Query override with spaces**: `run.bat` now passes query/poster to PowerShell via env vars (`PS_QUERY`, `PS_POSTER`) with splatting to avoid nested-quote breakage in `-Command`
+- **Image preview sixel-first**: `logo_display` config now only affects the logo; all other image previews (bbcode, screenshots, cover/banner) always try chafa sixel first, then magick sixel, falling back to block art only when neither is available — no more `WT_SESSION` gating
+- **Cover/poster previews at 40 columns, banners at full width**: `render_image.ps1` accepts `-Width`; `run.bat`, `upload.bat`, `change_image.ps1`, and `preview_bbcode.ps1` pass 40 for covers and full terminal width for banners
+- **Winget-installed chafa detection**: searches `%LOCALAPPDATA%\Microsoft\WinGet\Packages` and adds chafa to PATH when winget did not
+- **Torrent file list from .torrent metadata**: BBCode description file-list spoiler now parses the actual `.torrent` file instead of scanning the directory, so it reflects real torrent contents (falls back to directory scan if the torrent hasn't been created yet)
+- **Configurable logo paths**: `logo_image_path` (logo PNG) and `nfo_logo_path` (ASCII logo injected into generated NFOs via `{{LOGO}}` placeholder in `shared/default.nfo`) — both resolve relative paths from project root
+- **fetch_categories hardening**: BG/RU label detection (Филми, Сериали, Игри, Музика, Софтуер, Аниме, Порно) via `\uXXXX` regex escapes (keeps the script ASCII for PS5.1); auto-guessed `type` field flagged with a visible warning in the JSONC header and console; categories file written to `output/categories_<host>.jsonc` and auto-detected by the pipeline
+- **Login error handling**: all web-session scripts show a clear error and wait for a keypress on login failure; `finally` blocks safely handle null cookie jars
+
+### Bug Fixes
+- **categories_file relative path**: `upload.ps1` and `edit.ps1` were resolving relative `categories_file` overrides against the parent of the repo root (two-level `Split-Path -Parent` at top of file), so the override silently fell back to `shared/categories.jsonc`
+- **LOGO_DISPLAY JSON quotes**: the batch config parser preserves JSON quotes, so `LOGO_DISPLAY` arrived in PowerShell as `"direct"` (with quotes) — PS scripts now strip them before comparing
+- **logo_display=direct ignored without WT_SESSION**: the Windows Terminal guard was silently downgrading direct (sixel) mode to ansi; when the user explicitly sets `logo_display=direct`, sixel output is used regardless
+- **Null ffprobe output** (`screens.ps1`): guarded `InvokeMethodOnNull` crash when ffprobe returns nothing; duration warning now surfaces stderr
+- **Missing `curl.exe`**: `run.bat` MISSING check now flags absent curl so first-run installer triggers on Windows builds that ship without it
+- **PS5.1 compatibility**: replaced `[WildcardPattern]::Escape` (not always available on older PS 5.1 builds) with regex across `run*.ps1`; fixed `$script:` scoping for `$noArtistOnly` and single-element array unwrapping in `music.ps1`
+- **Tracker host suffix**: the final `.tld` is stripped from tracker host when computing `categories_<host>.jsonc` filename (5 call sites kept consistent)
+
+### New Config Keys
+- `two_factor_secret` — Base32 TOTP secret for 2FA web login (leave empty if 2FA is disabled)
+- `logo_image_path` — path to logo PNG for image logo source (relative to project root or absolute; defaults to `shared/logo.png`)
+- `nfo_logo_path` — ASCII logo injected into generated NFOs via `{{LOGO}}` placeholder (defaults to `shared/logo_ascii.txt`)
+
+---
+
 ## v5.1.0 — 2026-04-12
 
 ### New Features

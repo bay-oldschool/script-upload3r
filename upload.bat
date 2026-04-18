@@ -428,6 +428,7 @@ choice /c 120 /n /m "Select: "
 if errorlevel 3 goto ask_auto
 if errorlevel 2 goto upl_preview_cover_change
 set "PRV_IMG_URL=!POSTER_URL!"
+set "PRV_IMG_WIDTH=40"
 call :upl_render_image
 goto ask_auto
 :upl_preview_cover_change
@@ -458,6 +459,7 @@ choice /c 120 /n /m "Select: "
 if errorlevel 3 goto ask_auto
 if errorlevel 2 goto upl_preview_banner_change
 set "PRV_IMG_URL=!BANNER_URL!"
+set "PRV_IMG_WIDTH=0"
 call :upl_render_image
 goto ask_auto
 :upl_preview_banner_change
@@ -473,7 +475,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0ps\torrent_contents.ps
 goto ask_auto
 
 :upl_render_image
-powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0ps\render_image.ps1" -Url "!PRV_IMG_URL!"
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0ps\render_image.ps1" -Url "!PRV_IMG_URL!" -Width !PRV_IMG_WIDTH!
 echo.
 echo  Press any key to return...
 pause > nul

@@ -181,5 +181,5 @@ if (Test-Path -LiteralPath $directory -PathType Leaf) {
 Write-Host "========================================" -ForegroundColor Green
 Write-Host "  Done! Files for: $outputName" -ForegroundColor Green
 Write-Host "========================================" -ForegroundColor Green
-$escapedName = [WildcardPattern]::Escape($outputName)
+$escapedName = $outputName -replace '([\[\]\*\?])', '`$1'
 Get-ChildItem -LiteralPath "$PSScriptRoot/output" | Where-Object { $_.Name -like "${escapedName}*" } | Select-Object -Property Name, Length

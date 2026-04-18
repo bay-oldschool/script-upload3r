@@ -52,6 +52,43 @@ if (Test-Path -LiteralPath $directory -PathType Leaf) {
 
 if (-not $configfile) { $configfile = Join-Path $RootDir "config.jsonc" }
 
+# ── Torrent file parser (bencode) ──────────────────────────────────────────
+function Bdecode-Desc([byte[]]$data, [ref]$pos) {
+    $c = [char]$data[$pos.Value]
+    if ($c -eq 'i') {
+        $pos.Value++
+        $s = $pos.Value
+        while ([char]$data[$pos.Value] -ne 'e') { $pos.Value++ }
+        $v = [System.Text.Encoding]::UTF8.GetString($data, $s, $pos.Value - $s)
+        $pos.Value++
+        return [long]$v
+    } elseif ($c -eq 'l') {
+        $pos.Value++
+        $a = @()
+        while ([char]$data[$pos.Value] -ne 'e') { $a += ,(Bdecode-Desc $data $pos) }
+        $pos.Value++
+        return ,$a
+    } elseif ($c -eq 'd') {
+        $pos.Value++
+        $h = [ordered]@{}
+        while ([char]$data[$pos.Value] -ne 'e') {
+            $k = Bdecode-Desc $data $pos
+            $v = Bdecode-Desc $data $pos
+            $h[$k] = $v
+        }
+        $pos.Value++
+        return $h
+    } else {
+        $s = $pos.Value
+        while ([char]$data[$pos.Value] -ne ':') { $pos.Value++ }
+        $len = [int][System.Text.Encoding]::UTF8.GetString($data, $s, $pos.Value - $s)
+        $pos.Value++
+        $str = [System.Text.Encoding]::UTF8.GetString($data, $pos.Value, $len)
+        $pos.Value += $len
+        return $str
+    }
+}
+
 # ── Audio duration from file metadata ───────────────────────────────────────
 # Reads the FLAC STREAMINFO block directly (fLaC magic -> block headers ->
 # type 0 == STREAMINFO) and computes duration = totalSamples * 1000 / sampleRate.
@@ -829,9 +866,97 @@ if ($metaEndIdx -ge 0) {
     }
 }
 
-# -- 2. Build torrent file list spoiler --
+# -- 2. Build torrent file list spoiler (from .torrent metadata, not directory scan) --
 $fileListSpoiler = ''
-if ($singleFile) {
+$torrentFile = Join-Path $OutDir "$baseName.torrent"
+$torrentFiles = $null
+if (Test-Path -LiteralPath $torrentFile) {
+    try {
+        $torRaw = [System.IO.File]::ReadAllBytes($torrentFile)
+        $torPos = 0
+        $torDict = Bdecode-Desc $torRaw ([ref]$torPos)
+        $torInfo = $torDict['info']
+        if ($torInfo) {
+            $torFileEntries = $torInfo['files']
+            if ($torFileEntries) {
+                $torrentFiles = @()
+                foreach ($tf in $torFileEntries) {
+                    $tfPath = ($tf['path']) -join '/'
+                    $torrentFiles += @{ Path = $tfPath; Size = [long]$tf['length'] }
+                }
+            } else {
+                $torrentFiles = @(@{ Path = $torInfo['name']; Size = [long]$torInfo['length'] })
+            }
+        }
+    } catch {
+        Write-Host "  Warning: could not parse torrent file, falling back to directory scan" -ForegroundColor Yellow
+    }
+}
+
+$audioExts = @('.flac','.mp3','.ogg','.opus','.m4a','.aac','.wav','.wma','.ape','.wv','.alac','.dts','.ac3')
+$withDuration = $music.IsPresent
+$totalDurMs = [long]0
+$audioTrackDurations = [System.Collections.Generic.List[string]]::new()
+
+if ($torrentFiles) {
+    $rows = @()
+    $totalSize = [long]0
+    $typeCounts = @{}
+    foreach ($tf in $torrentFiles) {
+        $rel = $tf.Path
+        $fSize = $tf.Size
+        $fSizeGB = [math]::Round($fSize / 1GB, 2)
+        if ($fSizeGB -ge 1) { $fSizeLabel = "$fSizeGB GB" } elseif ($fSize -ge 1MB) { $fSizeLabel = "$([math]::Round($fSize / 1MB, 2)) MB" } else { $fSizeLabel = "$([math]::Round($fSize / 1KB, 2)) KB" }
+        $durLabel = ''
+        if ($withDuration) {
+            $ext = [System.IO.Path]::GetExtension($rel).ToLower()
+            if ($audioExts -contains $ext) {
+                $diskPath = Join-Path $directory $rel
+                if (Test-Path -LiteralPath $diskPath) {
+                    $ms = Get-AudioDurationMs -Path $diskPath
+                    if ($ms -gt 0) {
+                        $totalDurMs += $ms
+                        $totalSec = [int][math]::Floor($ms / 1000)
+                        $mm = [int][math]::Floor($totalSec / 60)
+                        $ss = $totalSec % 60
+                        $durLabel = ('{0}:{1:D2}' -f $mm, $ss)
+                    }
+                }
+                $audioTrackDurations.Add($durLabel) | Out-Null
+            }
+        }
+        if ($withDuration) {
+            $rows += "[tr][td]${rel}[/td][td]${durLabel}[/td][td]${fSizeLabel}[/td][/tr]"
+        } else {
+            $rows += "[tr][td]${rel}[/td][td]${fSizeLabel}[/td][/tr]"
+        }
+        $totalSize += $fSize
+        $ext = [System.IO.Path]::GetExtension($rel).TrimStart('.').ToUpper()
+        if (-not $ext) { $ext = 'OTHER' }
+        if ($typeCounts.ContainsKey($ext)) { $typeCounts[$ext]++ } else { $typeCounts[$ext] = 1 }
+    }
+    $typeParts = ($typeCounts.GetEnumerator() | Sort-Object Name | ForEach-Object { "$($_.Value) $($_.Key)" })
+    $totalGB = [math]::Round($totalSize / 1GB, 2)
+    if ($totalGB -ge 1) { $totalLabel = "$totalGB GB" }
+    elseif ($totalSize -ge 1MB) { $totalLabel = "$([math]::Round($totalSize / 1MB, 2)) MB" }
+    else { $totalLabel = "$([math]::Round($totalSize / 1KB, 2)) KB" }
+    $totalCount = $torrentFiles.Count
+    $summary = "[b]Summary:[/b] $totalCount files: " + ($typeParts -join ', ') + " | Total: $totalLabel"
+    if ($withDuration -and $totalDurMs -gt 0) {
+        $totSec = [int][math]::Floor($totalDurMs / 1000)
+        $tH = [int][math]::Floor($totSec / 3600)
+        $tM = [int][math]::Floor(($totSec % 3600) / 60)
+        $tS = $totSec % 60
+        $playtimeLabel = if ($tH -gt 0) { ('{0}:{1:D2}:{2:D2}' -f $tH, $tM, $tS) } else { ('{0}:{1:D2}' -f $tM, $tS) }
+        $summary += " | Playtime: $playtimeLabel"
+    }
+    if ($withDuration) {
+        $fileTable = "[table]`n[tr][td][b]Name[/b][/td][td][b]Duration[/b][/td][td][b]Size[/b][/td][/tr]`n" + ($rows -join "`n") + "`n[/table]"
+    } else {
+        $fileTable = "[table]`n[tr][td][b]Name[/b][/td][td][b]Size[/b][/td][/tr]`n" + ($rows -join "`n") + "`n[/table]"
+    }
+    $fileListSpoiler = "`n`n[spoiler=Torrent files]`n${summary}`n`n${fileTable}`n[/spoiler]"
+} elseif ($singleFile) {
     $fi = Get-Item -LiteralPath $singleFile
     $sizeGB = [math]::Round($fi.Length / 1GB, 2)
     if ($sizeGB -ge 1) { $sizeLabel = "$sizeGB GB" } elseif ($fi.Length -ge 1MB) { $sizeLabel = "$([math]::Round($fi.Length / 1MB, 2)) MB" } else { $sizeLabel = "$([math]::Round($fi.Length / 1KB, 2)) KB" }
@@ -841,7 +966,6 @@ if ($singleFile) {
     $fileListSpoiler = "`n`n[spoiler=Torrent files]`n${summary}`n`n${fileTable}`n[/spoiler]"
 } elseif (Test-Path -LiteralPath $directory -PathType Container) {
     $videoExts = @('.mkv','.mp4','.avi','.wmv','.mov','.m4v','.mpg','.mpeg','.ts','.m2ts')
-    $audioExts = @('.flac','.mp3','.ogg','.opus','.m4a','.aac','.wav','.wma','.ape','.wv','.alac','.dts','.ac3')
     $allFiles = Get-ChildItem -LiteralPath $directory -Recurse -File | Where-Object {
         $inTrailerDir = $_.FullName -match '(?i)[/\\]trailers?[/\\]'
         $isTrailerFile = $_.Name -match '(?i)(^|[\s._-])trailer' -and $videoExts -contains $_.Extension.ToLower()
@@ -852,11 +976,6 @@ if ($singleFile) {
         $rows = @()
         $totalSize = [long]0
         $typeCounts = @{}
-        # Music uploads: read duration from each audio file's own metadata
-        # (FLAC STREAMINFO block) and add a Duration column. No external tools.
-        $withDuration = $music.IsPresent
-        $totalDurMs = [long]0
-        $audioTrackDurations = [System.Collections.Generic.List[string]]::new()
         foreach ($f in $allFiles) {
             $rel = $f.FullName
             if ($rel.StartsWith($dirPrefix)) { $rel = $rel.Substring($dirPrefix.Length) }
@@ -874,9 +993,6 @@ if ($singleFile) {
                         $ss = $totalSec % 60
                         $durLabel = ('{0}:{1:D2}' -f $mm, $ss)
                     }
-                    # Track every audio file (even when duration probing failed) so
-                    # the tracklist numbering in $Description stays aligned 1:1
-                    # with the file list order.
                     $audioTrackDurations.Add($durLabel) | Out-Null
                 }
             }
@@ -1123,9 +1239,11 @@ if (-not $CategoriesFile -or -not (Test-Path -LiteralPath $CategoriesFile)) {
     $CategoriesFile = ''
     if ($TrackerUrl) {
         try {
-            $trackerHost = ([System.Uri]$TrackerUrl).Host -replace '[^A-Za-z0-9]', '_'
-            $hostFile = Join-Path $RootDir "shared\categories_${trackerHost}.jsonc"
-            if (Test-Path -LiteralPath $hostFile) { $CategoriesFile = $hostFile }
+            $trackerHost = ([System.Uri]$TrackerUrl).Host -replace '\.[^.]+$','' -replace '[^A-Za-z0-9]','_'
+            $outFile = Join-Path $RootDir "output\categories_${trackerHost}.jsonc"
+            $sharedFile = Join-Path $RootDir "shared\categories_${trackerHost}.jsonc"
+            if (Test-Path -LiteralPath $outFile) { $CategoriesFile = $outFile }
+            elseif (Test-Path -LiteralPath $sharedFile) { $CategoriesFile = $sharedFile }
         } catch { }
     }
 }
@@ -1492,11 +1610,9 @@ if ($singleFile -and $singleFile -match '\.nfo$') {
 if ($NfoFile) {
     Write-Host "NFO found: $NfoFile" -ForegroundColor Cyan
 } else {
-    # Fall back to a generated default NFO (movie/tv/music, not games/software).
-    # Reads the template from shared/default.nfo and injects a mediainfo summary
-    # block into the RELEASE INFO section.
-    if (-not ($game.IsPresent -or $software.IsPresent)) {
-        $defaultTmpl = Join-Path $RootDir 'shared/default.nfo'
+    # Fall back to a generated default NFO. Movie/TV and music use mediainfo;
+    # games/software derive a minimal block from filesystem data.
+    $defaultTmpl = Join-Path $RootDir 'shared/default.nfo'
         if (Test-Path -LiteralPath $defaultTmpl) {
             # Parse the mediainfo file into section dictionaries (one per track)
             $sections = New-Object System.Collections.Generic.List[object]
@@ -1534,7 +1650,60 @@ if ($NfoFile) {
                 if ($last[0] -eq '__BLANK__') { return }
                 $script:summaryRows += ,@('__BLANK__', '')
             }
-            if ($music.IsPresent) {
+            if ($software.IsPresent -or $game.IsPresent) {
+                # --- Game/Software NFO: minimal filesystem summary (no mediainfo) ---
+                # Title row (cleaned release name already in $swName via earlier block)
+                $nfoTitle = if ($swName) { $swName } else { $TorrentName }
+                if ($Year -and $Year -ne '????') { $nfoTitle = "$nfoTitle ($Year)" }
+                Add-Row 'Title' $nfoTitle
+                Add-Sep
+                # Scan source path for size and file list
+                $swItems = @()
+                if ($singleFile -and (Test-Path -LiteralPath $singleFile)) {
+                    $swItems = @(Get-Item -LiteralPath $singleFile)
+                } elseif (Test-Path -LiteralPath $directory) {
+                    $swItems = @(Get-ChildItem -LiteralPath $directory -Recurse -File -ErrorAction SilentlyContinue)
+                }
+                $swTotalBytes = 0
+                foreach ($it in $swItems) { $swTotalBytes += [int64]$it.Length }
+                # Pick a primary file: largest by size (usually the installer/archive/iso)
+                $swPrimary = $swItems | Sort-Object -Property Length -Descending | Select-Object -First 1
+                if ($swPrimary) {
+                    Add-Row 'File' $swPrimary.Name
+                    $ext = $swPrimary.Extension.TrimStart('.').ToUpper()
+                    if ($ext) { Add-Row 'Format' $ext }
+                }
+                if ($swItems.Count -gt 1) { Add-Row 'Files' ("{0} files" -f $swItems.Count) }
+                if ($swTotalBytes -gt 0) {
+                    $sz = $swTotalBytes
+                    $units = @('B','KB','MB','GB','TB')
+                    $u = 0
+                    while ($sz -ge 1024 -and $u -lt $units.Count - 1) { $sz = $sz / 1024; $u++ }
+                    Add-Row 'Size' ("{0:N2} {1}" -f $sz, $units[$u])
+                }
+                # Type label derived from filename heuristics (tracker category
+                # may not exist — e.g. nanoset has no Programs/*, so looking up
+                # by $CategoryId would return the default movie category).
+                $swNameLc = $TorrentName.ToLower()
+                if ($game.IsPresent) {
+                    $swType = 'Game'
+                    if ($swNameLc -match 'mac|osx|macos') { $swType = 'Game (Mac)' }
+                    elseif ($swNameLc -match 'linux') { $swType = 'Game (Linux)' }
+                    elseif ($swNameLc -match 'switch|nsp|xci') { $swType = 'Game (Switch)' }
+                    elseif ($swNameLc -match 'ps[2345]|playstation') { $swType = 'Game (PlayStation)' }
+                    elseif ($swNameLc -match 'xbox') { $swType = 'Game (Xbox)' }
+                } else {
+                    $swType = 'Software'
+                    if ($swNameLc -match 'mac|osx|macos') { $swType = 'Software (Mac)' }
+                    elseif ($swNameLc -match '\.iso') { $swType = 'Software (PC ISO)' }
+                    elseif ($swNameLc -match 'linux') { $swType = 'Software (Linux)' }
+                }
+                Add-Row 'Type' $swType
+                Add-Sep
+                if ($game.IsPresent -and $Igdb -and $Igdb -ne 0) {
+                    Add-Row 'IGDB' "https://www.igdb.com/games/$Igdb"
+                }
+            } elseif ($music.IsPresent) {
                 # --- Music NFO: album details, audio format, tracklist ---
                 $nfoMusicLines = @()
                 if (Test-Path -LiteralPath $MbFile) {
@@ -1748,6 +1917,19 @@ if ($NfoFile) {
 
             $tmplText = [System.IO.File]::ReadAllText($defaultTmpl, [System.Text.Encoding]::UTF8)
             $tmplText = $tmplText.Replace('{{MEDIAINFO_SUMMARY}}', ($bodyLines -join "`n"))
+            # Inject ASCII logo from configured file (relative to script dir or absolute).
+            # Default: shared/logo_ascii.txt. Missing file = empty substitution.
+            $nfoLogoCfg = if ($config.nfo_logo_path) { [string]$config.nfo_logo_path } else { 'shared/logo_ascii.txt' }
+            if ([System.IO.Path]::IsPathRooted($nfoLogoCfg)) {
+                $nfoLogoPath = $nfoLogoCfg
+            } else {
+                $nfoLogoPath = Join-Path $RootDir $nfoLogoCfg
+            }
+            $logoContent = ''
+            if (Test-Path -LiteralPath $nfoLogoPath) {
+                $logoContent = [System.IO.File]::ReadAllText($nfoLogoPath, [System.Text.Encoding]::UTF8).TrimEnd("`r","`n")
+            }
+            $tmplText = $tmplText.Replace('{{LOGO}}', $logoContent)
             # NFO viewers (incl. UNIT3D) read NFO bytes as CP437. UTF-8 mojibakes
             # (BOM EF BB BF renders as "∩╗┐"). Block/box chars (░▒▓█ ═┌─┐│└┘)
             # all map to single bytes in CP437. BG title is transliterated to
@@ -1760,7 +1942,6 @@ if ($NfoFile) {
             $NfoFile = $generatedNfo
             Write-Host "NFO not found in torrent; generated default: $NfoFile" -ForegroundColor DarkGray
         }
-    }
 }
 
 # Build BDInfo bbcode file (subtitle announcements) for movie/tv only
@@ -1791,10 +1972,16 @@ if (-not ($game.IsPresent -or $software.IsPresent -or $music.IsPresent)) {
 }
 
 # Write request file
+$catTypeHint = if ($game.IsPresent) { 'game' }
+    elseif ($software.IsPresent) { 'software' }
+    elseif ($music.IsPresent) { 'music' }
+    elseif ($tv.IsPresent) { 'tv' }
+    else { 'movie' }
 $requestLines = @(
     "torrent_name=$TorrentName"
     "name=$UploadName"
     "category_id=$CategoryId"
+    "cat_type=$catTypeHint"
     "type_id=$TypeId"
 )
 if (-not ($game.IsPresent -or $software.IsPresent -or $music.IsPresent)) {

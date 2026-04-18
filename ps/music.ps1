@@ -47,23 +47,25 @@ New-Item -Path $OutDir -ItemType Directory -ErrorAction SilentlyContinue
 $OutputFile = Join-Path -Path $OutDir -ChildPath "${baseName}_music.txt"
 
 # ─── Clean music title from dirname ────────────────────────────────────────
+# Always compute auto-detected query from basename (used as fallback if override fails)
+$autoQuery = $baseName
+# Remove square-bracket tags like [FLAC 24-48], [WEB] — keep parentheses (part of title)
+$autoQuery = $autoQuery -replace '\s*\[[^\]]+\]\s*', ' '
+# Remove curly-brace tags like {2024}
+$autoQuery = $autoQuery -replace '\s*\{[^}]+\}\s*', ' '
+# Replace dots/underscores with spaces
+$autoQuery = $autoQuery -replace '[._]', ' '
+# Remove common music format/quality tags (standalone words)
+$autoQuery = $autoQuery -replace '(?i)\b(FLAC|MP3|AAC|OGG|OPUS|WEB|CD|VINYL|LP|Lossless|320|V0|V2|CBR|VBR|16bit|24bit|16-44|24-48|24-96|24-192|44\.1kHz|48kHz|96kHz|192kHz|Hi-?Res|320kbps|256kbps|192kbps|128kbps)\b', ' '
+# Remove scene group tags at end
+$autoQuery = $autoQuery -replace '(?i)\s*[-](PERFECT|FATHEAD|ENRiCH|YARD|WRE|dL|AMRAP|JLM|D2H|FiH|NBFLAC|DGN|TOSK|ERP)\s*$', ''
+# Remove year from end (4-digit year after the album name)
+$autoQuery = $autoQuery -replace '\s+(19|20)\d{2}\s*$', ''
+$autoQuery = ($autoQuery -replace '\s+', ' ').Trim()
 if ($query) {
     $cleanQuery = $query
 } else {
-    $cleanQuery = $baseName
-    # Remove square-bracket tags like [FLAC 24-48], [WEB] — keep parentheses (part of title)
-    $cleanQuery = $cleanQuery -replace '\s*\[[^\]]+\]\s*', ' '
-    # Remove curly-brace tags like {2024}
-    $cleanQuery = $cleanQuery -replace '\s*\{[^}]+\}\s*', ' '
-    # Replace dots/underscores with spaces
-    $cleanQuery = $cleanQuery -replace '[._]', ' '
-    # Remove common music format/quality tags (standalone words)
-    $cleanQuery = $cleanQuery -replace '(?i)\b(FLAC|MP3|AAC|OGG|OPUS|WEB|CD|VINYL|LP|Lossless|320|V0|V2|CBR|VBR|16bit|24bit|16-44|24-48|24-96|24-192|44\.1kHz|48kHz|96kHz|192kHz|Hi-?Res|320kbps|256kbps|192kbps|128kbps)\b', ' '
-    # Remove scene group tags at end
-    $cleanQuery = $cleanQuery -replace '(?i)\s*[-](PERFECT|FATHEAD|ENRiCH|YARD|WRE|dL|AMRAP|JLM|D2H|FiH|NBFLAC|DGN|TOSK|ERP)\s*$', ''
-    # Remove year from end (4-digit year after the album name)
-    $cleanQuery = $cleanQuery -replace '\s+(19|20)\d{2}\s*$', ''
-    $cleanQuery = ($cleanQuery -replace '\s+', ' ').Trim()
+    $cleanQuery = $autoQuery
 }
 
 # Split "Artist - Album" if present (handle hyphen, en-dash, em-dash)
@@ -76,6 +78,15 @@ if ($cleanQuery -match "^(.+?)\s+[$dashChars]\s+(.+)$") {
 }
 # Expand common abbreviations
 if ($searchArtist -eq 'VA') { $searchArtist = 'Various Artists' }
+
+# Pre-compute auto-detect artist/album split (for per-provider fallback when query overridden)
+$autoArtist = ''
+$autoAlbum = $autoQuery
+if ($autoQuery -match "^(.+?)\s+[$dashChars]\s+(.+)$") {
+    $autoArtist = $matches[1].Trim()
+    $autoAlbum = $matches[2].Trim()
+}
+if ($autoArtist -eq 'VA') { $autoArtist = 'Various Artists' }
 
 # ─── Deezer API (primary) ──────────────────────────────────────────────────
 
@@ -136,8 +147,8 @@ function Search-Deezer {
         $searchData = Invoke-Deezer "https://api.deezer.com/search/album?q=${encoded}&limit=10"
     }
 
-    # Strategy 4: just artist name (skip for generic artists like "Various Artists")
-    if (-not (Test-DeezerResults $searchData) -and $safeArtist -and $safeArtist -ne 'Various Artists') {
+    # Strategy 4: just artist name (skip for generic artists like "Various Artists", skip when auto-detect pending)
+    if (-not (Test-DeezerResults $searchData) -and -not $script:noArtistOnly -and $safeArtist -and $safeArtist -ne 'Various Artists') {
         $encoded = [Uri]::EscapeDataString($safeArtist)
         Write-Host "Retrying Deezer with artist only: '$safeArtist'" -ForegroundColor Yellow
         $searchData = Invoke-Deezer "https://api.deezer.com/search/album?q=${encoded}&limit=10"
@@ -291,6 +302,7 @@ function Search-MusicBrainz {
     $luceneSpecial = '[+\-&|!(){}\[\]^"~*?:\\/]'
 
     $searchData = $null
+    $mbHasResults = { param($d) $d -and $d.'release-groups' -and $d.'release-groups'.Count -gt 0 }
     # Structured search if artist/album split available
     if ($searchArtist) {
         $safeArtist = [regex]::Replace($searchArtist, $luceneSpecial, '\$0')
@@ -300,10 +312,22 @@ function Search-MusicBrainz {
         $searchUrl = "https://musicbrainz.org/ws/2/release-group/?query=artist:${encodedArtist}+AND+releasegroup:${encodedAlbum}&fmt=json&limit=10"
         Write-Host "Searching MusicBrainz: artist='$searchArtist' album='$searchAlbum'" -ForegroundColor Cyan
         $searchData = Invoke-MusicBrainz $searchUrl
+        # Retry with short album (strip parenthesized subtitles)
+        if (-not (& $mbHasResults $searchData) -and $searchAlbum -match '\(') {
+            $shortAlbum = ($searchAlbum -replace '\s*\([^)]+\)\s*', '' -replace '\s+', ' ').Trim()
+            if ($shortAlbum -and $shortAlbum -ne $searchAlbum) {
+                $safeAlbum = [regex]::Replace($shortAlbum, $luceneSpecial, '\$0')
+                $encodedAlbum = [Uri]::EscapeDataString($safeAlbum)
+                $searchUrl = "https://musicbrainz.org/ws/2/release-group/?query=artist:${encodedArtist}+AND+releasegroup:${encodedAlbum}&fmt=json&limit=10"
+                Write-Host "Retrying MusicBrainz: artist='$searchArtist' album='$shortAlbum'" -ForegroundColor Yellow
+                Start-Sleep -Seconds 1
+                $searchData = Invoke-MusicBrainz $searchUrl
+            }
+        }
     }
 
     # Fallback: generic full-text search
-    if (-not $searchData -or -not $searchData.'release-groups' -or $searchData.'release-groups'.Count -eq 0) {
+    if (-not (& $mbHasResults $searchData)) {
         $safeQuery = [regex]::Replace($cleanQuery, $luceneSpecial, '\$0')
         $encoded = [Uri]::EscapeDataString($safeQuery)
         $searchUrl = "https://musicbrainz.org/ws/2/release-group/?query=${encoded}&fmt=json&limit=10"
@@ -312,9 +336,7 @@ function Search-MusicBrainz {
         $searchData = Invoke-MusicBrainz $searchUrl
     }
 
-    if (-not $searchData -or -not $searchData.'release-groups' -or $searchData.'release-groups'.Count -eq 0) {
-        return $null
-    }
+    if (-not (& $mbHasResults $searchData)) { return $null }
     return $searchData.'release-groups'
 }
 
@@ -608,15 +630,24 @@ function Search-Lastfm {
     Write-Host ""
     Write-Host "Trying Last.fm..." -ForegroundColor Yellow
     $baseUrl = "http://ws.audioscrobbler.com/2.0/?format=json&api_key=${LastfmApiKey}"
+    $lfmHasResults = { param($d) $d -and $d.results -and $d.results.albummatches -and $d.results.albummatches.album -and @($d.results.albummatches.album).Count -gt 0 }
 
     # Try album search
     $encoded = [Uri]::EscapeDataString($cleanQuery)
     Write-Host "Searching Last.fm: '$cleanQuery'" -ForegroundColor Cyan
     $data = Invoke-Lastfm "${baseUrl}&method=album.search&album=${encoded}&limit=10"
 
-    if (-not $data -or -not $data.results -or -not $data.results.albummatches -or -not $data.results.albummatches.album) {
-        return $null
+    # Retry with short query (strip parenthesized subtitles)
+    if (-not (& $lfmHasResults $data) -and $cleanQuery -match '\(') {
+        $shortQuery = ($cleanQuery -replace '\s*\([^)]+\)\s*', '' -replace '\s+', ' ').Trim()
+        if ($shortQuery -and $shortQuery -ne $cleanQuery) {
+            $encoded = [Uri]::EscapeDataString($shortQuery)
+            Write-Host "Retrying Last.fm: '$shortQuery'" -ForegroundColor Yellow
+            $data = Invoke-Lastfm "${baseUrl}&method=album.search&album=${encoded}&limit=10"
+        }
     }
+
+    if (-not (& $lfmHasResults $data)) { return $null }
     $albums = @($data.results.albummatches.album)
     if ($albums.Count -eq 0) { return $null }
     return $albums
@@ -734,10 +765,19 @@ function Search-AudioDb {
         $eAlbum = [Uri]::EscapeDataString($searchAlbum)
         Write-Host "Searching TheAudioDB: artist='$searchArtist' album='$searchAlbum'" -ForegroundColor Cyan
         $data = Invoke-AudioDb "${base}/searchalbum.php?s=${eArtist}&a=${eAlbum}"
+        # Retry with short album (strip parenthesized subtitles)
+        if ((-not $data -or -not $data.album) -and $searchAlbum -match '\(') {
+            $shortAlbum = ($searchAlbum -replace '\s*\([^)]+\)\s*', '' -replace '\s+', ' ').Trim()
+            if ($shortAlbum -and $shortAlbum -ne $searchAlbum) {
+                $eAlbum = [Uri]::EscapeDataString($shortAlbum)
+                Write-Host "Retrying TheAudioDB: artist='$searchArtist' album='$shortAlbum'" -ForegroundColor Yellow
+                $data = Invoke-AudioDb "${base}/searchalbum.php?s=${eArtist}&a=${eAlbum}"
+            }
+        }
     }
 
-    # Fallback: search by artist only (v1 doesn't support free-text album search)
-    if (-not $data -or -not $data.album) {
+    # Fallback: search by artist only (v1 doesn't support free-text album search, skip when auto-detect pending)
+    if ((-not $data -or -not $data.album) -and -not $script:noArtistOnly) {
         $safeArtist = if ($searchArtist) { $searchArtist } else { ($cleanQuery -split '\s*-\s*')[0].Trim() }
         if ($safeArtist) {
             $eArtist = [Uri]::EscapeDataString($safeArtist)
@@ -834,6 +874,16 @@ function Search-ITunes {
     $encoded = [Uri]::EscapeDataString($cleanQuery)
     Write-Host "Searching iTunes: '$cleanQuery'" -ForegroundColor Cyan
     $data = Invoke-ITunes "https://itunes.apple.com/search?term=${encoded}&entity=album&limit=10"
+
+    # Retry with short query (strip parenthesized subtitles)
+    if ((-not $data -or -not $data.results -or $data.results.Count -eq 0) -and $cleanQuery -match '\(') {
+        $shortQuery = ($cleanQuery -replace '\s*\([^)]+\)\s*', '' -replace '\s+', ' ').Trim()
+        if ($shortQuery -and $shortQuery -ne $cleanQuery) {
+            $encoded = [Uri]::EscapeDataString($shortQuery)
+            Write-Host "Retrying iTunes: '$shortQuery'" -ForegroundColor Yellow
+            $data = Invoke-ITunes "https://itunes.apple.com/search?term=${encoded}&entity=album&limit=10"
+        }
+    }
 
     if (-not $data -or -not $data.results -or $data.results.Count -eq 0) { return $null }
     return @($data.results)
@@ -979,10 +1029,42 @@ function Format-Provider([string]$name, $resultData) {
     }
 }
 
+# Helper: search a single provider, with auto-detect fallback when query was overridden
+$canAutoFallback = $query -and $autoQuery -ne $query
+$noArtistOnly = $false
+function Search-ProviderWithFallback([string]$provider) {
+    # When auto-fallback available: skip artist-only on override, try auto-detect first
+    if ($script:canAutoFallback) { $script:noArtistOnly = $true }
+    $res = Search-Provider $provider
+    $script:noArtistOnly = $false
+    if ($res) { $res = @($res) }
+    if ($res -and $res.Count -gt 0) { return $res }
+    if (-not $script:canAutoFallback) { return $null }
+    # Override found nothing (without artist-only) — retry with auto-detected query
+    Write-Host "Retrying $provider with auto-detected query..." -ForegroundColor Yellow
+    $script:cleanQuery = $script:autoQuery
+    $script:searchArtist = $script:autoArtist
+    $script:searchAlbum = $script:autoAlbum
+    $res = Search-Provider $provider
+    # Restore override values for potential next provider
+    $script:cleanQuery = $script:query
+    $script:searchArtist = $script:overrideArtist
+    $script:searchAlbum = $script:overrideAlbum
+    if ($res) { $res = @($res) }
+    if ($res -and $res.Count -gt 0) { return $res }
+    return $null
+}
+
+# Save override values for restoring between providers
+if ($canAutoFallback) {
+    $overrideArtist = $searchArtist
+    $overrideAlbum = $searchAlbum
+}
+
 # Try providers in configured order
 Write-Host "Music providers: $($MusicProviders -join ' > ')" -ForegroundColor DarkGray
 foreach ($provider in $MusicProviders) {
-    $providerResults = Search-Provider $provider
+    $providerResults = Search-ProviderWithFallback $provider
     if ($providerResults) { $providerResults = @($providerResults) }
     if ($providerResults -and $providerResults.Count -gt 0) {
         $source = $provider
@@ -1021,7 +1103,7 @@ while ($picking) {
     if ($choice -match '^[nN]$' -and $remainingProviders.Count -gt 0) {
         $found = $false
         foreach ($nextProvider in $remainingProviders) {
-            $nextResults = Search-Provider $nextProvider
+            $nextResults = Search-ProviderWithFallback $nextProvider
             if ($nextResults) { $nextResults = @($nextResults) }
             if ($nextResults -and $nextResults.Count -gt 0) {
                 $source = $nextProvider

@@ -57,12 +57,20 @@ if (-not $VideoFile) {
 
 Write-Host "Found video: $($VideoFile.Name)"
 
-$durationString = (& $FFprobeExe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 $VideoFile.FullName).Trim()
+$durationRaw = & $FFprobeExe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 $VideoFile.FullName 2>&1
+$durationString = "$durationRaw".Trim()
 if (-not $durationString -or $durationString -eq 'N/A') {
     Write-Host "Warning: could not determine video duration. Skipping." -ForegroundColor Yellow
     exit 0
 }
-$duration = [int][double]::Parse($durationString, [System.Globalization.CultureInfo]::InvariantCulture)
+$duration = 0
+[double]$durationDouble = 0.0
+if ([double]::TryParse($durationString, [System.Globalization.NumberStyles]::Float, [System.Globalization.CultureInfo]::InvariantCulture, [ref]$durationDouble)) {
+    $duration = [int]$durationDouble
+} else {
+    Write-Host "Warning: ffprobe returned unparseable duration: '$durationString'. Skipping." -ForegroundColor Yellow
+    exit 0
+}
 
 if ($duration -eq 0) {
     Write-Host "Warning: could not determine video duration. Skipping." -ForegroundColor Yellow

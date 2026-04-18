@@ -85,6 +85,7 @@ $ApiKey    = $config.api_key
 if (-not $ApiKey) { Write-Host "Skipping: 'api_key' not configured in $configfile" -ForegroundColor Yellow; exit 0 }
 $TrackerUrl = if ($config.tracker_url) { ([string]$config.tracker_url).TrimEnd('/') } else { '' }
 if (-not $TrackerUrl) { Write-Host "Skipping: 'tracker_url' not configured in $configfile" -ForegroundColor Yellow; exit 0 }
+. (Join-Path (Join-Path $PSScriptRoot 'shared') 'web_login.ps1')
 
 $OutDir          = Join-Path $PSScriptRoot "output"
 $RequestFile     = if ($requestfile) { $requestfile } else { Join-Path $OutDir "${TorrentName}_upload_request.txt" }
@@ -148,15 +149,17 @@ $BdinfoFile    = $reqData['bdinfo_file']
 # Resolve categories file: config override -> tracker-host-based -> default
 $CategoriesFile = if ($config.categories_file) { [string]$config.categories_file } else { '' }
 if ($CategoriesFile -and -not [System.IO.Path]::IsPathRooted($CategoriesFile)) {
-    $CategoriesFile = Join-Path (Split-Path -Parent $PSScriptRoot) $CategoriesFile
+    $CategoriesFile = Join-Path $PSScriptRoot $CategoriesFile
 }
 if (-not $CategoriesFile -or -not (Test-Path -LiteralPath $CategoriesFile)) {
     $CategoriesFile = ''
     if ($TrackerUrl) {
         try {
-            $trackerHost = ([System.Uri]$TrackerUrl).Host -replace '[^A-Za-z0-9]', '_'
-            $hostFile = Join-Path $PSScriptRoot "shared\categories_${trackerHost}.jsonc"
-            if (Test-Path -LiteralPath $hostFile) { $CategoriesFile = $hostFile }
+            $trackerHost = ([System.Uri]$TrackerUrl).Host -replace '\.[^.]+$','' -replace '[^A-Za-z0-9]','_'
+            $outFile = Join-Path $PSScriptRoot "output\categories_${trackerHost}.jsonc"
+            $sharedFile = Join-Path $PSScriptRoot "shared\categories_${trackerHost}.jsonc"
+            if (Test-Path -LiteralPath $outFile) { $CategoriesFile = $outFile }
+            elseif (Test-Path -LiteralPath $sharedFile) { $CategoriesFile = $sharedFile }
         } catch { }
     }
 }
@@ -165,14 +168,24 @@ if (-not $CategoriesFile) {
 }
 $allCategories = ([System.IO.File]::ReadAllText($CategoriesFile, $utf8NoBom) -split "`n" | Where-Object { $_ -notmatch '^\s*//' }) -join "`n" | ConvertFrom-Json
 
-# Determine type filter from default category_id
-$catType = 'movie'
-foreach ($cat in $allCategories) {
-    if ([string]$cat.id -eq $CategoryId) { $catType = $cat.type; break }
+# Determine type filter: prefer explicit hint from description.ps1 (knows which
+# -software/-game/-music/-tv switch the pipeline was invoked with), fall back to
+# deriving from category_id when the hint is missing (older request files).
+$catType = if ($reqData['cat_type']) { [string]$reqData['cat_type'] } else { '' }
+if (-not $catType) {
+    $catType = 'movie'
+    foreach ($cat in $allCategories) {
+        if ([string]$cat.id -eq $CategoryId) { $catType = $cat.type; break }
+    }
 }
 
-# Filter categories by type
+# Filter categories by type; fall back to all categories if nothing matches
+# (tracker may not have a type corresponding to the pipeline switch).
 $categories = @($allCategories | Where-Object { $_.type -eq $catType })
+if ($categories.Count -eq 0) {
+    Write-Host "No '$catType' categories on this tracker; showing all." -ForegroundColor Yellow
+    $categories = @($allCategories)
+}
 
 if (-not $auto.IsPresent) {
     Write-Host "  (enter 'c' at any prompt to cancel)" -ForegroundColor DarkGray
@@ -543,73 +556,55 @@ try {
                 $cfg = (Get-Content -LiteralPath $configfile | Where-Object { $_ -notmatch '^\s*//' }) -join "`n" | ConvertFrom-Json
                 $webUser = $cfg.username
                 $webPass = $cfg.password
+                $webTfa  = if ($cfg.two_factor_secret) { $cfg.two_factor_secret } else { '' }
                 if ($webUser -and $webPass) {
-                    $cj = [System.IO.Path]::GetTempFileName()
+                    $imgOutDir = Join-Path $PSScriptRoot 'output'
                     $hf = [System.IO.Path]::GetTempFileName()
-                    # Get login page with CSRF, captcha, and honeypot fields
-                    $loginPage = (& curl.exe -s -c $cj -b $cj "${TrackerUrl}/login") -join "`n"
-                    $cs = ''; if ($loginPage -match 'name="_token"\s*value="([^"]+)"') { $cs = $matches[1] }
-                    $ca = ''; if ($loginPage -match 'name="_captcha"\s*value="([^"]+)"') { $ca = $matches[1] }
-                    $rn = ''; $rv = ''
-                    if ($loginPage -match 'name="([A-Za-z0-9]{16})"\s*value="(\d+)"') { $rn = $matches[1]; $rv = $matches[2] }
-                    if ($cs) {
-                        $rf = @(); if ($rn) { $rf = @('-d', "${rn}=${rv}") }
-                        # Login using URL-encoded form (same as edit.ps1)
-                        & curl.exe -s -D $hf -o NUL -c $cj -b $cj `
-                            -d "_token=$cs" -d "_captcha=$ca" -d "_username=" `
-                            -d "username=$webUser" --data-urlencode "password=$webPass" `
-                            -d "remember=on" @rf "${TrackerUrl}/login"
-                        $ll = ''
-                        foreach ($h in Get-Content -LiteralPath $hf) {
-                            if ($h -match '^Location:\s*(.+)') { $ll = $matches[1].Trim() }
+                    $cj = Get-CachedCookieJar -TrackerUrl $TrackerUrl -Username $webUser `
+                        -Password $webPass -TwoFactorSecret $webTfa -OutputDir $imgOutDir
+                    if (-not $cj) {
+                        Write-Host "FAILED (login failed)" -ForegroundColor Yellow
+                    } else {
+                        # Fetch edit page for CSRF token
+                        $editPage = (& curl.exe -s -c $cj -b $cj --max-time 30 "${TrackerUrl}/torrents/${torrentId}/edit") -join "`n"
+                        $editCsrf = [regex]::Match($editPage, 'name="_token"\s*value="([^"]+)"')
+                        if (-not $editCsrf.Success) {
+                            # Try Livewire token format
+                            $editCsrf = [regex]::Match($editPage, '_token&quot;:&quot;([^&]+)&quot;')
                         }
-                        if ($ll -match '/login') {
-                            Write-Host "FAILED (login failed)" -ForegroundColor Yellow
-                        } else {
-                            if ($ll) { & curl.exe -s -o NUL -c $cj -b $cj --max-time 15 $ll | Out-Null }
-                            # Fetch edit page for CSRF token
-                            $editPage = (& curl.exe -s -c $cj -b $cj --max-time 30 "${TrackerUrl}/torrents/${torrentId}/edit") -join "`n"
-                            $editCsrf = [regex]::Match($editPage, 'name="_token"\s*value="([^"]+)"')
-                            if (-not $editCsrf.Success) {
-                                # Try Livewire token format
-                                $editCsrf = [regex]::Match($editPage, '_token&quot;:&quot;([^&]+)&quot;')
-                            }
-                            if ($editCsrf.Success) {
-                                $formToken = $editCsrf.Groups[1].Value
-                                # Build image fields
-                                $imageFields = @()
-                                if ($hasCover) { $imageFields += @('-F', "torrent-cover=@$tempPoster") }
-                                if ($hasBanner) { $imageFields += @('-F', "torrent-banner=@$tempBanner") }
-                                # POST edit with cover/banner (include required fields to avoid clearing them)
-                                $coverResp = & curl.exe -s -w "`n%{http_code}" -D $hf -b $cj -X POST `
-                                    -F "_token=$formToken" -F "_method=PATCH" `
-                                    -F "name=<$tempName" -F "description=<$tempDesc" -F "mediainfo=<$tempMediainfo" `
-                                    @bdinfoFields `
-                                    -F "keywords=$Keywords" `
-                                    -F "category_id=$CategoryId" -F "type_id=$TypeId" `
-                                    -F "anon=$Anonymous" -F "personal_release=$Personal" `
-                                    @imageFields `
-                                    "${TrackerUrl}/torrents/${torrentId}"
-                                $coverCode = ($coverResp -split "`n")[-1].Trim()
-                                if ($coverCode -eq '302') {
-                                    $coverLoc = ''
-                                    foreach ($h in Get-Content -LiteralPath $hf) {
-                                        if ($h -match '^Location:\s*(.+)') { $coverLoc = $matches[1].Trim() }
-                                    }
-                                    if ($coverLoc -and $coverLoc -notmatch '/edit|/login') {
-                                        Write-Host "OK" -ForegroundColor Green
-                                    } else {
-                                        Write-Host "FAILED (redirect to $coverLoc)" -ForegroundColor Yellow
-                                    }
+                        if ($editCsrf.Success) {
+                            $formToken = $editCsrf.Groups[1].Value
+                            # Build image fields
+                            $imageFields = @()
+                            if ($hasCover) { $imageFields += @('-F', "torrent-cover=@$tempPoster") }
+                            if ($hasBanner) { $imageFields += @('-F', "torrent-banner=@$tempBanner") }
+                            # POST edit with cover/banner (include required fields to avoid clearing them)
+                            $coverResp = & curl.exe -s -w "`n%{http_code}" -D $hf -b $cj -X POST `
+                                -F "_token=$formToken" -F "_method=PATCH" `
+                                -F "name=<$tempName" -F "description=<$tempDesc" -F "mediainfo=<$tempMediainfo" `
+                                @bdinfoFields `
+                                -F "keywords=$Keywords" `
+                                -F "category_id=$CategoryId" -F "type_id=$TypeId" `
+                                -F "anon=$Anonymous" -F "personal_release=$Personal" `
+                                @imageFields `
+                                "${TrackerUrl}/torrents/${torrentId}"
+                            $coverCode = ($coverResp -split "`n")[-1].Trim()
+                            if ($coverCode -eq '302') {
+                                $coverLoc = ''
+                                foreach ($h in Get-Content -LiteralPath $hf) {
+                                    if ($h -match '^Location:\s*(.+)') { $coverLoc = $matches[1].Trim() }
+                                }
+                                if ($coverLoc -and $coverLoc -notmatch '/edit|/login') {
+                                    Write-Host "OK" -ForegroundColor Green
                                 } else {
-                                    Write-Host "FAILED (HTTP $coverCode)" -ForegroundColor Yellow
+                                    Write-Host "FAILED (redirect to $coverLoc)" -ForegroundColor Yellow
                                 }
                             } else {
-                                Write-Host "FAILED (could not get edit page token)" -ForegroundColor Yellow
+                                Write-Host "FAILED (HTTP $coverCode)" -ForegroundColor Yellow
                             }
+                        } else {
+                            Write-Host "FAILED (could not get edit page token)" -ForegroundColor Yellow
                         }
-                    } else {
-                        Write-Host "FAILED (could not get login token)" -ForegroundColor Yellow
                     }
                     Remove-Item -LiteralPath $cj, $hf -ErrorAction SilentlyContinue
                 } else {

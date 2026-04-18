@@ -78,6 +78,7 @@ Then edit `config.jsonc` with your credentials. JSONC supports `//` line comment
   "tracker_url": "https://yourtracker.cc",
   "username": "",
   "password": "",
+  "two_factor_secret": "",
   "name_convention": 1,
   "type_id": 3,
   "resolution_id": 2,
@@ -122,6 +123,8 @@ Then edit `config.jsonc` with your credentials. JSONC supports `//` line comment
   "onlyimage_api_key": "YOUR_ONLYIMAGE_API_KEY",
   "show_logo": 1,
   "logo_source": "image",
+  "logo_image_path": "shared/logo.png",
+  "nfo_logo_path": "shared/logo_ascii.txt",
   "logo_display": "direct",
   "logo_width": 40
 }
@@ -134,6 +137,7 @@ Then edit `config.jsonc` with your credentials. JSONC supports `//` line comment
 | `tracker_url` | Tracker base URL (e.g. `https://yourtracker.cc`) |
 | `username` | Tracker login username — required for edit/delete/subtitle scripts |
 | `password` | Tracker login password — required for edit/delete/subtitle scripts |
+| `two_factor_secret` | Base32 TOTP secret for 2FA web login — leave empty if 2FA is disabled |
 | `name_convention` | `1` = UNIT3D format (spaces, normalized titles), `0` = raw torrent name |
 | `category_id` | Tracker category ID (1 = Movies, etc.) |
 | `type_id` | Tracker type ID (e.g. 3 = Blu-ray) |
@@ -185,6 +189,8 @@ Then edit `config.jsonc` with your credentials. JSONC supports `//` line comment
 | `template_screenshots` | BBCode template for screenshot section (default: `templates/screenshots.bbcode`) |
 | `show_logo` | Show ASCII/image logo in main menu (`1` = show, `0` = hide) |
 | `logo_source` | Logo source: `"text"` (colored ASCII), `"image"` (render logo.png) |
+| `logo_image_path` | Path to logo PNG for image logo source (default: `shared/logo.png`) |
+| `nfo_logo_path` | ASCII logo injected into generated NFOs via `{{LOGO}}` placeholder (default: `shared/logo_ascii.txt`) |
 | `logo_display` | Image display mode: `"ansi"`, `"block"`, `"ascii"`, or `"direct"` (Sixel) |
 | `logo_width` | Logo width in characters for image display modes |
 | `logo_color_letters` | 256-color code for logo letters (text source only) |
@@ -414,6 +420,9 @@ Each pipeline step can be run standalone. Scripts are in `ps/`.
 | Preview NFO | `.\ps\preview_nfo.ps1 <file.nfo>` |
 | Torrent contents | `.\ps\torrent_contents.ps1 <torrent> <mediapath> [config]` |
 | Change cover/banner | `.\ps\change_image.ps1 <torrent_id> [config]` |
+| Render image (terminal) | `.\ps\render_image.ps1 [-Width N] [-Renderer chafa\|magick\|auto] <image>` |
+| Generate logo PNG | `.\shared\make_logo.ps1 -Text <str> -OutputPath <png>` |
+| Fix TLS 1.2 (legacy) | `.\ps\fix_tls.ps1` |
 
 ---
 
@@ -481,6 +490,8 @@ Width-based detection handles non-standard heights (e.g. 1920x960 correctly maps
 - **Customizable templates**: BBCode description layout is fully customizable via template files in `templates/`
 - **Interactive pickers**: category, type, and resolution selection with arrow-key navigation and default preselection
 - **Upload log**: saves full request fields and response to `_upload.log`
+- **2FA (TOTP) web login**: `two_factor_secret` in config enables automatic 2FA code generation for edit/delete/upload/subtitle/fetch_categories/list_uploads_web; session cookies are cached per-host in `output/.web_cookie_<host>` (90-min TTL) with 429 rate-limit auto-retry
+- **Legacy Windows support**: works on Windows 10 build 14393+ — installer auto-downloads `curl.exe` when missing, picks an OS-appropriate ffmpeg build (BtbN for 1809+, Gyan 4.4 for older), and falls back to direct downloads when winget is unavailable; see `ps/fix_tls.ps1` (also in maintenance menu) to repair TLS 1.2 on older builds
 
 ## Screenshots
 

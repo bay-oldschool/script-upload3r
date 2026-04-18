@@ -43,13 +43,27 @@ if (-not $termWidth -or $termWidth -lt 40) {
 }
 if (-not $termWidth -or $termWidth -lt 40) { $termWidth = 120 }
 
-# Find ImageMagick for sixel image rendering
+# Find image tools — prefer sixel (chafa/magick), fall back to chafa block art
 $magickExe = $null
+$chafaExe = $null
 $bannerUrls = @()
 $posterUrls = @()
 $screenUrls = @()
 $termPixelWidth = 0
 if ($images) {
+    # Find chafa
+    $chafaExe = (Get-Command chafa -ErrorAction SilentlyContinue).Source
+    if (-not $chafaExe) {
+        $c = Join-Path (Split-Path -Parent $PSScriptRoot) 'tools\chafa.exe'
+        if (Test-Path -LiteralPath $c) { $chafaExe = $c }
+    }
+    if (-not $chafaExe) {
+        $wingetPkg = Get-ChildItem "$env:LOCALAPPDATA\Microsoft\WinGet\Packages\hpjansson.Chafa_*" -Directory -ErrorAction SilentlyContinue | Select-Object -First 1
+        if ($wingetPkg) {
+            $c = Get-ChildItem "$($wingetPkg.FullName)\chafa-*\Chafa.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
+            if ($c) { $chafaExe = $c.FullName }
+        }
+    }
     $magickExe = (Get-Command magick -ErrorAction SilentlyContinue).Source
     if (-not $magickExe) {
         $imDir = Get-ChildItem 'C:\Program Files\ImageMagick-*' -Directory -ErrorAction SilentlyContinue | Select-Object -First 1
@@ -58,6 +72,7 @@ if ($images) {
             if (Test-Path $candidate) { $magickExe = $candidate }
         }
     }
+    $canRenderImages = [bool]$chafaExe -or [bool]$magickExe
     if ($magickExe) {
         # Terminal pixel width — query via Win32 API, fallback to estimate
         try {
@@ -91,7 +106,7 @@ $text = [regex]::Replace($text, '\[img(?:=(\d+))?\](.*?)\[/img\]', {
     param($m)
     $size = $m.Groups[1].Value
     $url = $m.Groups[2].Value
-    if ($magickExe -and $url -match '^https?://') {
+    if ($canRenderImages -and $url -match '^https?://') {
         if ($size -eq '250') { $script:posterUrls += $url }
         elseif ($size -eq '1920') { $script:bannerUrls += $url }
         else { $script:screenUrls += $url }
@@ -350,37 +365,51 @@ function Render-Table([string]$tableHtml) {
     "`n" + ($lines -join "`n") + "`n"
 }
 
-# Render banner sixel at the top of text (native resolution, no resize — terminal clips to fit)
-if ($magickExe -and $bannerUrls.Count -gt 0) {
+# Helper: render an image file as inline terminal art — sixel first, magick sixel fallback
+# $cols = max column width for the image (0 or omitted = full terminal width)
+function Render-ImageInline([string]$path, [int]$cols = 0) {
+    if ($cols -le 0) { $cols = $termWidth }
+    if ($chafaExe) {
+        $data = & $chafaExe --format sixel -s "${cols}x" $path 2>$null
+        if ($data) { return ($data -join "`n") + "`n" }
+    }
+    if ($magickExe) {
+        $pxWidth = $cols * 10
+        $data = & $magickExe $path -resize "${pxWidth}x>" sixel:- 2>$null
+        if ($data) { return ($data -join "`n") + "`n" }
+    }
+    return $null
+}
+
+# Render banner at the top of text
+if ($canRenderImages -and $bannerUrls.Count -gt 0) {
     $tmpBanner = Join-Path $env:TEMP "bbcode_banner.jpg"
     try {
         Invoke-WebRequest -Uri $bannerUrls[0] -OutFile $tmpBanner -ErrorAction Stop
-        $sixelData = & $magickExe $tmpBanner -resize "${termPixelWidth}x" sixel:- 2>$null
-        if ($sixelData) {
-            $text = ($sixelData -join "`n") + "`n" + $text
-        }
+        $rendered = Render-ImageInline $tmpBanner 0
+        if ($rendered) { $text = $rendered + $text }
     } catch { }
     finally { Remove-Item $tmpBanner -Force -ErrorAction SilentlyContinue }
 }
 
-# Render poster sixel before table (removed from table cell to avoid breaking layout)
-if ($magickExe -and $posterUrls.Count -gt 0) {
-    $posterSixel = ''
+# Render poster before table
+if ($canRenderImages -and $posterUrls.Count -gt 0) {
+    $posterArt = ''
     foreach ($pUrl in $posterUrls) {
         $tmpPoster = Join-Path $env:TEMP "bbcode_poster_preview.jpg"
         try {
             Invoke-WebRequest -Uri $pUrl -OutFile $tmpPoster -ErrorAction Stop
-            $sixelData = & $magickExe $tmpPoster -geometry 150x sixel:- 2>$null
-            if ($sixelData) { $posterSixel += ($sixelData -join "`n") + "`n" }
+            $rendered = Render-ImageInline $tmpPoster 40
+            if ($rendered) { $posterArt += $rendered }
         } catch { }
         finally { Remove-Item $tmpPoster -Force -ErrorAction SilentlyContinue }
     }
-    if ($posterSixel) {
+    if ($posterArt) {
         if ($text -match '\[table\]') {
             $tableIdx = $text.IndexOf('[table]')
-            $text = $text.Substring(0, $tableIdx) + $posterSixel + $text.Substring($tableIdx)
+            $text = $text.Substring(0, $tableIdx) + $posterArt + $text.Substring($tableIdx)
         } else {
-            $text += "`n" + $posterSixel
+            $text += "`n" + $posterArt
         }
     }
 }
@@ -438,8 +467,8 @@ $text = $text -replace '\[/mediainfo\]', "${cyan}--- /MediaInfo ---${reset}`n"
 # Clean up excessive blank lines (more than 2 consecutive)
 $text = [regex]::Replace($text, '(\r?\n){4,}', "`n`n`n")
 
-# Render screenshot sixel — merge side by side, insert above all screenshot links
-if ($magickExe -and $screenUrls.Count -gt 0) {
+# Render screenshots — merge side by side, insert above all screenshot links
+if ($canRenderImages -and $screenUrls.Count -gt 0) {
     $tmpFiles = @()
     try {
         foreach ($sUrl in $screenUrls) {
@@ -447,10 +476,26 @@ if ($magickExe -and $screenUrls.Count -gt 0) {
             Invoke-WebRequest -Uri $sUrl -OutFile $tmpFile -ErrorAction Stop
             $tmpFiles += $tmpFile
         }
-        $sixelData = & $magickExe @tmpFiles -resize x200 +append -resize "${termPixelWidth}x>" sixel:- 2>$null
-        if ($sixelData) {
-            $screenSixel = ($sixelData -join "`n") + "`n"
-            # Find the first screenshot link line and insert sixel above all of them
+        $screenArt = $null
+        if ($chafaExe -and $magickExe) {
+            # Merge with magick, render sixel with chafa
+            $merged = Join-Path $env:TEMP "bbcode_screen_merged.jpg"
+            & $magickExe @tmpFiles -resize x200 +append $merged 2>$null
+            if (Test-Path $merged) {
+                $data = & $chafaExe --format sixel -s "${termWidth}x" $merged 2>$null
+                if ($data) { $screenArt = ($data -join "`n") + "`n" }
+                Remove-Item $merged -Force -ErrorAction SilentlyContinue
+            }
+        } elseif ($magickExe) {
+            $sixelData = & $magickExe @tmpFiles -resize x200 +append -resize "${termPixelWidth}x>" sixel:- 2>$null
+            if ($sixelData) { $screenArt = ($sixelData -join "`n") + "`n" }
+        } elseif ($chafaExe) {
+            # No magick — render first screenshot only via sixel
+            $data = & $chafaExe --format sixel -s "${termWidth}x" $tmpFiles[0] 2>$null
+            if ($data) { $screenArt = ($data -join "`n") + "`n" }
+        }
+        if ($screenArt) {
+            # Find the first screenshot link line and insert art above all of them
             $lines = $text -split "`n"
             $firstScreenIdx = -1
             foreach ($sUrl in $screenUrls) {
@@ -465,9 +510,9 @@ if ($magickExe -and $screenUrls.Count -gt 0) {
             if ($firstScreenIdx -ge 0) {
                 $before = ($lines[0..($firstScreenIdx - 1)] -join "`n")
                 $after = ($lines[$firstScreenIdx..($lines.Count - 1)] -join "`n")
-                $text = $before + "`n" + $screenSixel + $after
+                $text = $before + "`n" + $screenArt + $after
             } else {
-                $text += "`n" + $screenSixel
+                $text += "`n" + $screenArt
             }
         }
     } catch { }
@@ -479,11 +524,14 @@ if ($magickExe -and $screenUrls.Count -gt 0) {
 # Output
 Write-Host $text
 
-# Exit code 2 = ImageMagick available (caller can offer image rendering)
-# Exit code 0 = no ImageMagick or already rendered with images
+# Exit code 2 = image rendering available (caller can offer image rendering)
+# Exit code 0 = no image tools or already rendered with images
 if (-not $images) {
     $hasIM = (Get-Command magick -ErrorAction SilentlyContinue) -or
              (Get-ChildItem 'C:\Program Files\ImageMagick-*\magick.exe' -ErrorAction SilentlyContinue)
-    if ($hasIM) { exit 2 }
+    $hasChafa = (Get-Command chafa -ErrorAction SilentlyContinue) -or
+                (Test-Path (Join-Path (Split-Path -Parent $PSScriptRoot) 'tools\chafa.exe')) -or
+                [bool](Get-ChildItem "$env:LOCALAPPDATA\Microsoft\WinGet\Packages\hpjansson.Chafa_*\chafa-*\Chafa.exe" -ErrorAction SilentlyContinue)
+    if ($hasIM -or $hasChafa) { exit 2 }
 }
 exit 0

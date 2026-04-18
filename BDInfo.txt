@@ -20,6 +20,10 @@
 🖼️ Промяна на корица/банер от топ-10 TMDB постери/банери
 📦 Преглед и премахване на файлове от съдържанието на торента
 📂 Извличане на категории от тракера (fetch_categories.ps1)
+🔐 2FA (TOTP) вход с кеширане на сесията и автоматична повторна заявка при rate limit
+🪟 Съвместимост с Windows 10 build 14393+ — автоматично сваляне на curl, подходящ ffmpeg, TLS 1.2 fix скрипт
+🎨 Параметричен генератор за лого (shared/make_logo.ps1) с gradient fill и soft glow
+📄 Автоматичен NFO за игри и софтуер от файлово съдържание (primary file, формат, размер, IGDB линк)
 
 Keywords:
-MediaInfo анализ, Автоматични скрийншоти чрез ffmpeg, генериране на BBCode описания с AI (Gemini/Ollama/Groq/Grok/Cerebras/SambaNova/OpenRouter/HuggingFace), качване в UNIT3D тракер, нормализация на имена, разпознаване на български аудио и субтитри, създаване на торент файлове, търсене в TMDB/IMDB/IGDB, игри, софтуер, музика, Deezer, MusicBrainz, Discogs, Last.fm, TheAudioDB, iTunes, Twitch API, BBCode шаблони, NFO генератор.
+MediaInfo анализ, Автоматични скрийншоти чрез ffmpeg, генериране на BBCode описания с AI (Gemini/Ollama/Groq/Grok/Cerebras/SambaNova/OpenRouter/HuggingFace), качване в UNIT3D тракер, нормализация на имена, разпознаване на български аудио и субтитри, създаване на торент файлове, търсене в TMDB/IMDB/IGDB, игри, софтуер, музика, Deezer, MusicBrainz, Discogs, Last.fm, TheAudioDB, iTunes, Twitch API, BBCode шаблони, NFO генератор, 2FA TOTP, Windows 10 съвместимост, TLS 1.2, параметрично лого.

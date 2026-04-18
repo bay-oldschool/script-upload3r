@@ -1,5 +1,7 @@
 [b][size=25][url=https://github.com/bay-oldschool/script-upload3r]SCRIPT UPLOAD3R[/url][/size][/b]
 
+[size=15][url=https://github.com/bay-oldschool/script-upload3r/blob/main/CHANGELOG.md]Changelog[/url][/size]
+
 Набор от скриптове за подготовка и качване на медия в Unit3D тракери. Работи на Windows чрез [b]PowerShell[/b] / [b]Cmd[/b]. Включва интерактивно меню ([b]run.bat[/b]) или пълна CLI поддръжка. Поддържа [b]филми[/b], [b]сериали[/b], [b]игри[/b], [b]софтуер[/b] и [b]музика[/b].
 
 [b][size=15]Какво прави[/size][/b]
@@ -78,6 +80,7 @@ install.bat
   "tracker_url": "https://yourtracker.cc",
   "username": "",
   "password": "",
+  "two_factor_secret": "",
   "name_convention": 1,
   "type_id": 3,
   "resolution_id": 2,
@@ -116,6 +119,8 @@ install.bat
   "onlyimage_api_key": "YOUR_ONLYIMAGE_API_KEY",
   "show_logo": 1,
   "logo_source": "image",
+  "logo_image_path": "shared/logo.png",
+  "nfo_logo_path": "shared/logo_ascii.txt",
   "logo_display": "direct",
   "logo_width": 40
 }
@@ -128,6 +133,7 @@ install.bat
 [*][b]announce_url[/b] — пълен announce URL с твоя passkey (от акаунта в тракера)
 [*][b]username[/b] — потребителско име за тракера (необходимо за edit/delete/subtitle скриптовете)
 [*][b]password[/b] — парола за тракера (необходимо за edit/delete/subtitle скриптовете)
+[*][b]two_factor_secret[/b] — Base32 TOTP секрет за 2FA вход (празно, ако 2FA е изключен)
 [*][b]name_convention[/b] — 1 = UNIT3D формат (интервали, нормализирани заглавия), 0 = оригинално име на торента
 [*][b]personal[/b] — 1 за персонален рилийз, 0 иначе
 [*][b]internal / featured / free / doubleup / sticky[/b] — staff-only полета: 0 = изкл, 1 = вкл, "ask" = пита при качване
@@ -156,6 +162,8 @@ install.bat
 [*][b]onlyimage_api_key[/b] — [url=https://onlyimage.org/user/settings/api]onlyimage.org API key[/url] (от настройките на акаунта)
 [*][b]show_logo[/b] — показване на лого в менюто (1/0)
 [*][b]logo_source[/b] — "text" (ASCII с цветове) или "image" (рендериране на logo.png)
+[*][b]logo_image_path[/b] — път към лого PNG (по подразбиране: shared/logo.png)
+[*][b]nfo_logo_path[/b] — ASCII лого, което се вмъква в генерираните NFO файлове (placeholder {{LOGO}}, по подразбиране shared/logo_ascii.txt)
 [*][b]logo_display[/b] — режим за image: "ansi", "block", "ascii" или "direct" (Sixel)
 [*][b]logo_width[/b] — ширина на логото в символи
 [/list]
@@ -348,7 +356,9 @@ subtitle.bat 3643 "movie.bg.srt"
 [*][b]Преглед на торент[/b]: преглед и премахване на файлове от съдържанието на торента
 [*][b]Промяна на корица/банер[/b]: избор от топ-10 TMDB постери/банери с превю в терминала
 [*][b]Торент прогрес[/b]: цветен ANSI прогрес бар при хеширане, автоматичен piece size
-[*][b]Лого[/b]: конфигуруемо ASCII или image лого в менюто (текст/ANSI/Sixel)
+[*][b]Лого[/b]: конфигуруемо ASCII или image лого в менюто (текст/ANSI/Sixel) — с параметричен генератор (shared/make_logo.ps1) за създаване на собствени лога
+[*][b]2FA (TOTP)[/b]: автоматично генериране на 2FA кодове за edit/delete/upload/subtitle/fetch_categories чрез two_factor_secret; кеширане на сесията в output/.web_cookie_<host> (90 мин TTL)
+[*][b]Поддръжка на Windows 10 (build 14393+)[/b]: инсталаторът сваля curl.exe когато липсва, избира подходящ ffmpeg (BtbN за 1809+, Gyan 4.4 за по-стари Windows) и директно сваля chafa/ImageMagick когато winget не е наличен; TLS 1.2 fix скрипт (ps/fix_tls.ps1) за стари билдове
 [/list]
 
 [b][size=15]Скрийншоти[/size][/b]

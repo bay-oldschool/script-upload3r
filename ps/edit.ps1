@@ -168,14 +168,18 @@ if (-not $ApiKey) { Write-Host "Skipping: 'api_key' not configured in $configfil
 $TrackerUrl = if ($config.tracker_url) { ([string]$config.tracker_url).TrimEnd('/') } else { '' }
 $Username   = $config.username
 $Password   = $config.password
+$TwoFactorSecret = if ($config.two_factor_secret) { $config.two_factor_secret } else { '' }
 
 if (-not $Username -or -not $Password) {
     Write-Host "Error: 'username' and 'password' must be set in $configfile for editing" -ForegroundColor Red
     exit 1
 }
 
+. (Join-Path (Join-Path $PSScriptRoot 'shared') 'web_login.ps1')
+
 # Web session helper
-$cookieJar  = [System.IO.Path]::GetTempFileName()
+$OutDir = Join-Path $PSScriptRoot 'output'
+$cookieJar  = $null
 $tempName   = [System.IO.Path]::GetTempFileName()
 $tempDesc   = [System.IO.Path]::GetTempFileName()
 $headerFile = [System.IO.Path]::GetTempFileName()
@@ -185,27 +189,14 @@ $formToken   = ''
 
 function Invoke-WebLogin {
     if ($script:webLoggedIn) { return }
-    Write-Host "Logging in to ${TrackerUrl}..." -ForegroundColor Cyan
-    $lp = (& curl.exe -s -c $script:cookieJar -b $script:cookieJar "${TrackerUrl}/login") -join "`n"
-    $cs = ''; if ($lp -match 'name="_token"\s*value="([^"]+)"') { $cs = $matches[1] }
-    $ca = ''; if ($lp -match 'name="_captcha"\s*value="([^"]+)"') { $ca = $matches[1] }
-    $rn = ''; $rv = ''
-    if ($lp -match 'name="([A-Za-z0-9]{16})"\s*value="(\d+)"') { $rn = $matches[1]; $rv = $matches[2] }
-    if (-not $cs) { Write-Host "Error: could not get CSRF token from login page" -ForegroundColor Red; exit 1 }
-    $rf = @(); if ($rn) { $rf = @('-d', "${rn}=${rv}") }
-    $lhf = [System.IO.Path]::GetTempFileName()
-    & curl.exe -s -D $lhf -o NUL -c $script:cookieJar -b $script:cookieJar `
-        -d "_token=$cs" -d "_captcha=$ca" -d "_username=" `
-        -d "username=$Username" --data-urlencode "password=$Password" `
-        -d "remember=on" @rf "${TrackerUrl}/login"
-    $ll = ''
-    foreach ($h in Get-Content -LiteralPath $lhf) {
-        if ($h -match '^Location:\s*(.+)') { $ll = $matches[1].Trim() }
+    $script:cookieJar = Get-CachedCookieJar -TrackerUrl $TrackerUrl -Username $Username `
+        -Password $Password -TwoFactorSecret $TwoFactorSecret -OutputDir $script:OutDir
+    if (-not $script:cookieJar) {
+        Write-Host "Login failed. Check credentials and two_factor_secret in config.jsonc." -ForegroundColor Red
+        Write-Host "Press any key to continue ..." -ForegroundColor Yellow
+        $null = $Host.UI.RawUI.ReadKey('NoEcho,IncludeKeyDown')
+        exit 1
     }
-    Remove-Item -LiteralPath $lhf -ErrorAction SilentlyContinue
-    if ($ll -match '/login') { Write-Host "Error: login failed. Check username/password in config." -ForegroundColor Red; exit 1 }
-    Write-Host "Logged in." -ForegroundColor Green
-    & curl.exe -s -o NUL -c $script:cookieJar -b $script:cookieJar --max-time 15 $ll
     $script:webLoggedIn = $true
 }
 
@@ -901,15 +892,17 @@ if ($upr.Count -eq 0) {
 # Resolve categories file: config override -> tracker-host-based -> default
 $CategoriesFile = if ($config.categories_file) { [string]$config.categories_file } else { '' }
 if ($CategoriesFile -and -not [System.IO.Path]::IsPathRooted($CategoriesFile)) {
-    $CategoriesFile = Join-Path (Split-Path -Parent $PSScriptRoot) $CategoriesFile
+    $CategoriesFile = Join-Path $PSScriptRoot $CategoriesFile
 }
 if (-not $CategoriesFile -or -not (Test-Path -LiteralPath $CategoriesFile)) {
     $CategoriesFile = ''
     if ($TrackerUrl) {
         try {
-            $trackerHost = ([System.Uri]$TrackerUrl).Host -replace '[^A-Za-z0-9]', '_'
-            $hostFile = Join-Path $PSScriptRoot "shared\categories_${trackerHost}.jsonc"
-            if (Test-Path -LiteralPath $hostFile) { $CategoriesFile = $hostFile }
+            $trackerHost = ([System.Uri]$TrackerUrl).Host -replace '\.[^.]+$','' -replace '[^A-Za-z0-9]','_'
+            $outFile = Join-Path $PSScriptRoot "output\categories_${trackerHost}.jsonc"
+            $sharedFile = Join-Path $PSScriptRoot "shared\categories_${trackerHost}.jsonc"
+            if (Test-Path -LiteralPath $outFile) { $CategoriesFile = $outFile }
+            elseif (Test-Path -LiteralPath $sharedFile) { $CategoriesFile = $sharedFile }
         } catch { }
     }
 }
@@ -920,8 +913,14 @@ $allCategories = ([System.IO.File]::ReadAllText($CategoriesFile, $utf8NoBom) -sp
 
 if ($upr.ContainsKey('category_id')) {
     $newCategoryId = $upr['category_id']
-    $catType = ($allCategories | Where-Object { [string]$_.id -eq $newCategoryId }).type
-    if (-not $catType) { $catType = 'movie' }
+    # Prefer explicit cat_type hint from description.ps1 over id-based lookup,
+    # so edits honor the original -software/-game/-music intent even when the
+    # tracker has no matching category type.
+    $catType = if ($upr['cat_type']) { [string]$upr['cat_type'] } else { '' }
+    if (-not $catType) {
+        $catType = ($allCategories | Where-Object { [string]$_.id -eq $newCategoryId }).type
+        if (-not $catType) { $catType = 'movie' }
+    }
     $catName = ($allCategories | Where-Object { [string]$_.id -eq $newCategoryId }).name
     Write-Host "Category from upload request: " -NoNewline; Write-Host "$catName (category_id=$newCategoryId, $catType)" -ForegroundColor Cyan
 } else {
@@ -1237,7 +1236,8 @@ try {
         Write-Host ($body.Substring(0, [Math]::Min($body.Length, 2000)))
     }
 } finally {
-    Remove-Item -LiteralPath $cookieJar, $tempName, $tempDesc, $tempMediainfo, $tempKeywords, $headerFile -ErrorAction SilentlyContinue
+    $toRemove = @($cookieJar, $tempName, $tempDesc, $tempMediainfo, $tempKeywords, $headerFile) | Where-Object { $_ }
+    if ($toRemove) { Remove-Item -LiteralPath $toRemove -ErrorAction SilentlyContinue }
     if ($tempBdinfo) { Remove-Item -LiteralPath $tempBdinfo -ErrorAction SilentlyContinue }
     if ($tempCover) { Remove-Item -LiteralPath $tempCover -ErrorAction SilentlyContinue }
 }

@@ -9,7 +9,9 @@ param(
     [int]$Height   = 21,
     [switch]$Invert,
     [int]$Contrast = 30,  # Percent - shadow/highlight push in ffmpeg eq filter
-    [int]$Floor    = 40   # Grayscale values <= Floor are forced to 0 (empty)
+    [int]$Floor    = 40,  # Grayscale values <= Floor are forced to 0 (empty)
+    [string]$InputPath,
+    [string]$OutputPath
 )
 
 $ErrorActionPreference = 'Stop'
@@ -17,9 +19,9 @@ $ErrorActionPreference = 'Stop'
 
 $PSScriptRoot = Split-Path -Parent -Path $MyInvocation.MyCommand.Definition
 $RootDir = Split-Path -Parent -Path $PSScriptRoot
-$logoPng = Join-Path $RootDir 'shared/logo.png'
+$logoPng = if ($InputPath)  { $InputPath }  else { Join-Path $RootDir 'shared/logo.png' }
+$outTxt  = if ($OutputPath) { $OutputPath } else { Join-Path $RootDir 'shared/logo_ascii.txt' }
 $ffmpeg  = Join-Path $RootDir 'tools/ffmpeg.exe'
-$outTxt  = Join-Path $RootDir 'shared/logo_ascii.txt'
 $tmpRaw  = [System.IO.Path]::GetTempFileName()
 
 if (-not (Test-Path -LiteralPath $logoPng)) { Write-Host "logo.png not found" -ForegroundColor Red; exit 1 }

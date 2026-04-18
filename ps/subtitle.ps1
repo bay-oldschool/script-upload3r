@@ -110,6 +110,7 @@ $config     = (Get-Content -LiteralPath $configfile | Where-Object { $_ -notmatc
 $TrackerUrl = if ($config.tracker_url) { ([string]$config.tracker_url).TrimEnd('/') } else { '' }
 $Username   = $config.username
 $Password   = $config.password
+$TwoFactorSecret = if ($config.two_factor_secret) { $config.two_factor_secret } else { '' }
 $DefaultAnon = if ($config.anonymous) { [int]$config.anonymous } else { 0 }
 $DefaultLang = if ($config.subtitle_language_id) { [string]$config.subtitle_language_id } else { '' }
 
@@ -118,54 +119,23 @@ if (-not $Username -or -not $Password) {
     exit 1
 }
 
+. (Join-Path (Join-Path $PSScriptRoot 'shared') 'web_login.ps1')
+
 # Web session
-$cookieJar  = [System.IO.Path]::GetTempFileName()
+$OutDir = Join-Path $PSScriptRoot 'output'
 $headerFile = [System.IO.Path]::GetTempFileName()
 
 try {
-    # Step 1: Login
-    Write-Host "Logging in to ${TrackerUrl}..." -ForegroundColor Cyan
-    $loginPage = (& curl.exe -s -c $cookieJar -b $cookieJar "${TrackerUrl}/login") -join "`n"
-
-    $csrfToken = ''
-    if ($loginPage -match 'name="_token"\s*value="([^"]+)"') { $csrfToken = $matches[1] }
-    $captcha = ''
-    if ($loginPage -match 'name="_captcha"\s*value="([^"]+)"') { $captcha = $matches[1] }
-    $randomName = ''; $randomValue = ''
-    if ($loginPage -match 'name="([A-Za-z0-9]{16})"\s*value="(\d+)"') {
-        $randomName = $matches[1]; $randomValue = $matches[2]
-    }
-
-    if (-not $csrfToken) {
-        Write-Host "Error: could not get CSRF token from login page" -ForegroundColor Red
+    $cookieJar = Get-CachedCookieJar -TrackerUrl $TrackerUrl -Username $Username `
+        -Password $Password -TwoFactorSecret $TwoFactorSecret -OutputDir $OutDir
+    if (-not $cookieJar) {
+        Write-Host "Login failed. Check credentials and two_factor_secret in config.jsonc." -ForegroundColor Red
+        Write-Host "Press any key to continue ..." -ForegroundColor Yellow
+        $null = $Host.UI.RawUI.ReadKey('NoEcho,IncludeKeyDown')
         exit 1
     }
 
-    $loginHeaderFile = [System.IO.Path]::GetTempFileName()
-    $randomField = @()
-    if ($randomName) { $randomField = @('-d', "${randomName}=${randomValue}") }
-
-    & curl.exe -s -D $loginHeaderFile -o NUL -c $cookieJar -b $cookieJar `
-        -d "_token=$csrfToken" -d "_captcha=$captcha" -d "_username=" `
-        -d "username=$Username" --data-urlencode "password=$Password" `
-        -d "remember=on" @randomField "${TrackerUrl}/login"
-
-    $loginLocation = ''
-    foreach ($hline in Get-Content -LiteralPath $loginHeaderFile) {
-        if ($hline -match '^Location:\s*(.+)') { $loginLocation = $matches[1].Trim() }
-    }
-    Remove-Item -LiteralPath $loginHeaderFile -ErrorAction SilentlyContinue
-
-    if ($loginLocation -match '/login') {
-        Write-Host "Error: login failed. Check username/password in config." -ForegroundColor Red
-        exit 1
-    }
-    Write-Host "Logged in." -ForegroundColor Green
-
-    # Follow redirect to finalize session
-    & curl.exe -s -o NUL -c $cookieJar -b $cookieJar --max-time 15 $loginLocation
-
-    # Step 2: Fetch subtitle create page to get CSRF token and language list
+    # Fetch subtitle create page to get CSRF token and language list
     Write-Host "Fetching subtitle form for torrent #${torrent_id}..." -ForegroundColor Cyan
     $createPage = (& curl.exe -s -c $cookieJar -b $cookieJar --max-time 30 `
         "${TrackerUrl}/subtitles/create?torrent_id=${torrent_id}") -join "`n"
@@ -355,6 +325,7 @@ try {
         if ($errTitle) { Write-Host "  $errTitle" }
     }
 } finally {
-    Remove-Item -LiteralPath $cookieJar, $headerFile -ErrorAction SilentlyContinue
+    $toRemove = @($headerFile) + @($cookieJar) | Where-Object { $_ }
+    if ($toRemove) { Remove-Item -LiteralPath $toRemove -ErrorAction SilentlyContinue }
     if ($tempNote) { Remove-Item -LiteralPath $tempNote -ErrorAction SilentlyContinue }
 }
