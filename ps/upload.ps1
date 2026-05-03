@@ -137,6 +137,8 @@ $DoubleUp      = if ($reqData['doubleup']) { $reqData['doubleup'] } else { 0 }
 $DuUntil       = if ($reqData['du_until']) { $reqData['du_until'] } else { 0 }
 $Sticky        = if ($reqData['sticky']) { $reqData['sticky'] } else { 0 }
 $ModQueue      = if ($reqData['mod_queue_opt_in']) { $reqData['mod_queue_opt_in'] } else { 0 }
+$BgAudio       = if ($reqData['bg_audio']) { $reqData['bg_audio'] } else { 0 }
+$BgSub         = if ($reqData['bg_sub']) { $reqData['bg_sub'] } else { 0 }
 $SeasonNumber  = $reqData['season_number']
 $EpisodeNumber = $reqData['episode_number']
 $PosterUrl     = $reqData['poster']
@@ -293,6 +295,18 @@ if (-not $auto.IsPresent) {
     if ($aChoice -match '^[01]$') { $Anonymous = $aChoice } else { $Anonymous = $cfgAnonymous }
     Write-Host "  anonymous=$Anonymous" -ForegroundColor Green
 
+    # Bulgarian audio / subtitle pickers (movie & tv only; default from auto-detect)
+    if ($catType -eq 'movie' -or $catType -eq 'tv') {
+        $bgaChoice = Read-Host "Bulgarian audio (0/1) [$BgAudio]"
+        if ($bgaChoice -eq 'c') { Write-Host "Cancelled." -ForegroundColor Yellow; exit 2 }
+        if ($bgaChoice -match '^[01]$') { $BgAudio = $bgaChoice }
+        Write-Host "  bg_audio=$BgAudio" -ForegroundColor Green
+        $bgsChoice = Read-Host "Bulgarian subtitle (0/1) [$BgSub]"
+        if ($bgsChoice -eq 'c') { Write-Host "Cancelled." -ForegroundColor Yellow; exit 2 }
+        if ($bgsChoice -match '^[01]$') { $BgSub = $bgsChoice }
+        Write-Host "  bg_sub=$BgSub" -ForegroundColor Green
+    }
+
     # Staff-only fields (only prompt when config value is "ask")
     $staffFields = @(
         @{ name = 'internal';         label = 'Internal';              var = 'Internal'; type = 'bool' }
@@ -417,6 +431,12 @@ try {
         $tvFields = @('-F', "season_number=$SeasonNumber", '-F', "episode_number=$EpisodeNumber")
     }
 
+    # Bulgarian audio/subtitle flags (movie & tv only)
+    $bgFields = @()
+    if ($catType -eq 'movie' -or $catType -eq 'tv') {
+        $bgFields = @('-F', "bg_audio=$BgAudio", '-F', "bg_sub=$BgSub")
+    }
+
     # Download poster/cover image if available (only for no-meta categories: software, music, other)
     $posterFields = @()
     $tempPoster = $null
@@ -519,6 +539,7 @@ try {
         -F "mediainfo=<$tempMediainfo" `
         @bdinfoFields `
         @tvFields `
+        @bgFields `
         @posterFields `
         @staffCurlFields `
         @nfoFields `
@@ -586,6 +607,7 @@ try {
                                 -F "keywords=$Keywords" `
                                 -F "category_id=$CategoryId" -F "type_id=$TypeId" `
                                 -F "anon=$Anonymous" -F "personal_release=$Personal" `
+                                @bgFields `
                                 @imageFields `
                                 "${TrackerUrl}/torrents/${torrentId}"
                             $coverCode = ($coverResp -split "`n")[-1].Trim()
@@ -691,6 +713,10 @@ try {
     if ($catType -eq 'tv') {
         $log += "season_number: $SeasonNumber"
         $log += "episode_number: $EpisodeNumber"
+    }
+    if ($catType -eq 'movie' -or $catType -eq 'tv') {
+        $log += "bg_audio:      $BgAudio"
+        $log += "bg_sub:        $BgSub"
     }
     if ($NfoFile) { $log += "nfo:           $NfoFile" }
     if ($PosterUrl) { $log += "poster:        $PosterUrl" }

@@ -223,6 +223,8 @@ if ($fetchCode -eq '200') {
     $curEpisode      = if ($attrs.episode_number) { [string]$attrs.episode_number } else { '0' }
     $curPersonal     = if ($attrs.personal_release -eq $true) { '1' } else { '0' }
     $curAnon         = if ($attrs.anon -eq 1 -or $attrs.anonymous -eq $true) { '1' } else { '0' }
+    $curBgAudio      = if ($attrs.bg_audio -eq $true -or $attrs.bg_audio -eq 1) { '1' } else { '0' }
+    $curBgSub        = if ($attrs.bg_sub -eq $true -or $attrs.bg_sub -eq 1) { '1' } else { '0' }
     $curCategory     = $attrs.category
     $curType         = $attrs.type
     $curResolution   = $attrs.resolution
@@ -295,6 +297,10 @@ if ($fetchCode -eq '200') {
     if ($editPage -match 'id="personal_release"[^/]*checked') { $curPersonal = '1' }
     $curAnon = '0'
     if ($editPage -match 'id="anon"[^/]*checked') { $curAnon = '1' }
+    $curBgAudio = '0'
+    if ($editPage -match 'id="bg_audio"[^/]*checked') { $curBgAudio = '1' }
+    $curBgSub = '0'
+    if ($editPage -match 'id="bg_sub"[^/]*checked') { $curBgSub = '1' }
     $curCategory = ''; $curType = ''; $curResolution = ''
     # Extract description from Livewire contentBbcode
     if ($descfile) {
@@ -333,6 +339,8 @@ Write-Host "  season:        " -NoNewline; Write-Host "$curSeason" -ForegroundCo
 Write-Host "  episode:       " -NoNewline; Write-Host "$curEpisode" -ForegroundColor Green
 Write-Host "  personal:      " -NoNewline; Write-Host "$curPersonal" -ForegroundColor Green
 Write-Host "  anonymous:     " -NoNewline; Write-Host "$curAnon" -ForegroundColor Green
+Write-Host "  bg_audio:      " -NoNewline; Write-Host "$curBgAudio" -ForegroundColor Green
+Write-Host "  bg_sub:        " -NoNewline; Write-Host "$curBgSub" -ForegroundColor Green
 Write-Host "  keywords:      " -NoNewline; Write-Host "$curKeywords" -ForegroundColor Green
 Write-Host ""
 Write-Host "  (enter 'c' at any prompt to cancel)" -ForegroundColor DarkGray
@@ -1031,6 +1039,8 @@ if ($upr.Count -gt 0) {
     $newEpisode  = if ($upr.ContainsKey('episode_number')) { $upr['episode_number'] } else { $curEpisode }
     $newPersonal = if ($upr.ContainsKey('personal'))       { $upr['personal'] }       else { $curPersonal }
     $newAnon     = if ($upr.ContainsKey('anonymous'))      { $upr['anonymous'] }      else { $curAnon }
+    $newBgAudio  = if ($upr.ContainsKey('bg_audio'))       { $upr['bg_audio'] }       else { $curBgAudio }
+    $newBgSub    = if ($upr.ContainsKey('bg_sub'))         { $upr['bg_sub'] }         else { $curBgSub }
     $script:posterUrl = if ($upr.ContainsKey('poster') -and $upr['poster']) { $upr['poster'] } else { '' }
     Write-Host "TMDB=" -NoNewline; Write-Host "$newTmdb" -ForegroundColor Cyan -NoNewline
     Write-Host "  IMDB=" -NoNewline; Write-Host "$newImdb" -ForegroundColor Cyan -NoNewline
@@ -1039,6 +1049,10 @@ if ($upr.Count -gt 0) {
     Write-Host "  episode=" -NoNewline; Write-Host "$newEpisode" -ForegroundColor Cyan -NoNewline
     Write-Host "  personal=" -NoNewline; Write-Host "$newPersonal" -ForegroundColor Cyan -NoNewline
     Write-Host "  anonymous=" -NoNewline; Write-Host "$newAnon" -ForegroundColor Cyan
+    if ($catType -eq 'movie' -or $catType -eq 'tv') {
+        Write-Host "  bg_audio=" -NoNewline; Write-Host "$newBgAudio" -ForegroundColor Cyan -NoNewline
+        Write-Host "  bg_sub=" -NoNewline; Write-Host "$newBgSub" -ForegroundColor Cyan
+    }
 } else {
     Write-Host ""
     $newTmdb = Read-Host "TMDB ID [$curTmdb]"
@@ -1079,6 +1093,19 @@ if ($upr.Count -gt 0) {
     if ($newAnon -eq 'c') { Write-Host "Cancelled." -ForegroundColor Yellow; exit 0 }
     if (-not $newAnon) { $newAnon = $curAnon }
     Write-Host "  anonymous=$newAnon" -ForegroundColor Green
+    if ($catType -eq 'movie' -or $catType -eq 'tv') {
+        $newBgAudio = Read-Host "Bulgarian audio (0/1) [$curBgAudio]"
+        if ($newBgAudio -eq 'c') { Write-Host "Cancelled." -ForegroundColor Yellow; exit 0 }
+        if (-not $newBgAudio) { $newBgAudio = $curBgAudio }
+        Write-Host "  bg_audio=$newBgAudio" -ForegroundColor Green
+        $newBgSub = Read-Host "Bulgarian subtitle (0/1) [$curBgSub]"
+        if ($newBgSub -eq 'c') { Write-Host "Cancelled." -ForegroundColor Yellow; exit 0 }
+        if (-not $newBgSub) { $newBgSub = $curBgSub }
+        Write-Host "  bg_sub=$newBgSub" -ForegroundColor Green
+    } else {
+        $newBgAudio = $curBgAudio
+        $newBgSub   = $curBgSub
+    }
 }
 Write-Host ""
 
@@ -1145,6 +1172,12 @@ try {
         $extraFields += @('-F', "discogs_id_exists=1", '-F', "discogs_id=$newDiscogs")
     }
 
+    # Bulgarian audio/subtitle flags (movie & tv only)
+    $bgFields = @()
+    if ($catType -eq 'movie' -or $catType -eq 'tv') {
+        $bgFields = @('-F', "bg_audio=$newBgAudio", '-F', "bg_sub=$newBgSub")
+    }
+
     # Step 3: POST torrent update with _method=PATCH
     Write-Host "Updating torrent #${torrent_id}..." -ForegroundColor Cyan
 
@@ -1180,6 +1213,7 @@ try {
         @extraFields `
         @coverFields `
         @bannerFields `
+        @bgFields `
         -F "anon=$newAnon" `
         -F "personal_release=$newPersonal" `
         "${TrackerUrl}/torrents/${torrent_id}"

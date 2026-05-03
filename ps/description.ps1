@@ -1992,6 +1992,16 @@ $requestLines += @(
     "mod_queue_opt_in=$ModQueue"
     "season_number=$SeasonNumber"
     "episode_number=$EpisodeNumber"
+)
+if ($catTypeHint -eq 'movie' -or $catTypeHint -eq 'tv') {
+    $bgAudioFlag = if ($bgAudio) { 1 } else { 0 }
+    $bgSubFlag   = if ($bgSubsInContainer -or $bgSubsInTorrent) { 1 } else { 0 }
+    $requestLines += @(
+        "bg_audio=$bgAudioFlag"
+        "bg_sub=$bgSubFlag"
+    )
+}
+$requestLines += @(
     "poster=$PosterUrl"
     "banner=$BannerUrl"
     "description_file=$TorrentDescFile"
