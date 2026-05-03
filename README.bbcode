@@ -15,7 +15,7 @@
 [*][b]TMDB Search[/b] — взима заглавие, постер/банер URL-и и българско заглавие
 [*][b]IMDB Lookup[/b] — взима IMDB ID, рейтинг, жанрове, runtime, режисьор и актьори
 [*][b]AI описание[/b] — генерира богато BBCode описание на български чрез 8 AI доставчика
-[*][b]Upload Screenshots[/b] — качва скрийншотите в onlyimage.org и записва URL-ите
+[*][b]Upload Screenshots[/b] — качва скрийншотите в избрания image хост (onlyimage / freeimage / imgbb / pixhost) и записва URL-ите
 [*][b]Build Description[/b] — сглобява финалния BBCode файл за качване
 [/list]
 
@@ -116,7 +116,10 @@ install.bat
   "audiodb_api_key": "",
   "omdb_api_key": "YOUR_OMDB_API_KEY",
   "mdblist_api_key": "YOUR_MDBLIST_API_KEY",
+  "image_provider": "onlyimage",
   "onlyimage_api_key": "YOUR_ONLYIMAGE_API_KEY",
+  "freeimage_api_key": "YOUR_FREEIMAGE_API_KEY",
+  "imgbb_api_key": "YOUR_IMGBB_API_KEY",
   "show_logo": 1,
   "logo_source": "image",
   "logo_image_path": "shared/logo.png",
@@ -159,7 +162,10 @@ install.bat
 [*][b]audiodb_api_key[/b] — [url=https://www.theaudiodb.com/]TheAudioDB API key[/url] (безплатен ключ: 523532)
 [*][b]mdblist_api_key[/b] — [url=https://mdblist.com/]MDBList API key[/url] (безплатен, за Rotten Tomatoes Critics и Audience оценки)
 [*][b]omdb_api_key[/b] — [url=https://www.omdbapi.com/apikey.aspx]OMDB API key[/url] (безплатен, резервен вариант за RT Critics оценка когато MDBList няма данни)
+[*][b]image_provider[/b] — image хост за качване на скрийншоти/постери: "onlyimage" (по подразбиране), "freeimage", "imgbb" или "pixhost" (не изисква ключ)
 [*][b]onlyimage_api_key[/b] — [url=https://onlyimage.org/user/settings/api]onlyimage.org API key[/url] (от настройките на акаунта)
+[*][b]freeimage_api_key[/b] — [url=https://freeimage.host/page/api]freeimage.host API key[/url] (необходим когато image_provider="freeimage")
+[*][b]imgbb_api_key[/b] — [url=https://api.imgbb.com/]imgbb.com API key[/url] (необходим когато image_provider="imgbb")
 [*][b]show_logo[/b] — показване на лого в менюто (1/0)
 [*][b]logo_source[/b] — "text" (ASCII с цветове) или "image" (рендериране на logo.png)
 [*][b]logo_image_path[/b] — път към лого PNG (по подразбиране: shared/logo.png)
@@ -219,7 +225,7 @@ run.bat -steps 1,2,3 "D:\media\Pacific.Rim.2013.1080p.BluRay"
 [*][b]4 / tmdb[/b] — Търсене в TMDB за метаданни и БГ заглавие
 [*][b]5 / imdb[/b] — IMDB детайли (рейтинг, актьори и др.)
 [*][b]6 / describe[/b] — AI описание (8 доставчика)
-[*][b]7 / upload[/b] — Качване на скрийншоти в onlyimage.org
+[*][b]7 / upload[/b] — Качване на скрийншоти в избрания image хост (onlyimage / freeimage / imgbb / pixhost)
 [*][b]8 / description[/b] — Сглобяване на финално BBCode описание
 [/list]
 

@@ -92,7 +92,12 @@
     "audiodb_api_key": "",
 
     // ─── Screenshot Hosting ────────────────────────────────────
+    // Provider used for screenshot and poster uploads.
+    // Options: "onlyimage", "freeimage", "imgbb", "pixhost" (pixhost needs no key)
+    "image_provider": "onlyimage",
     "onlyimage_api_key": "YOUR_ONLYIMAGE_API_KEY",
+    "freeimage_api_key": "YOUR_FREEIMAGE_API_KEY",
+    "imgbb_api_key": "YOUR_IMGBB_API_KEY",
 
     // ─── Description Templates ────────────────────────────────
     // Paths relative to project root (or absolute). Edit the .bbcode files to customise layout.

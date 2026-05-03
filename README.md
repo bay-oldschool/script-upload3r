@@ -12,7 +12,7 @@ A set of scripts for preparing and uploading media to Unit3D-based torrent track
 4. **TMDB Search** — fetches title, poster/banner URLs, and Bulgarian title
 5. **IMDB Lookup** — fetches IMDB ID, rating, genres, runtime, director, and cast
 6. **AI Description** — generates a rich Bulgarian BBCode description via 8 supported AI providers
-7. **Upload Screenshots** — uploads screenshots to onlyimage.org and saves direct URLs
+7. **Upload Screenshots** — uploads screenshots to the configured image host (onlyimage / freeimage / imgbb / pixhost) and saves direct URLs
 8. **Build Description** — assembles the final BBCode torrent description file
 
 ### Game Pipeline
@@ -120,7 +120,10 @@ Then edit `config.jsonc` with your credentials. JSONC supports `//` line comment
   "audiodb_api_key": "",
   "omdb_api_key": "YOUR_OMDB_API_KEY",
   "mdblist_api_key": "YOUR_MDBLIST_API_KEY",
+  "image_provider": "onlyimage",
   "onlyimage_api_key": "YOUR_ONLYIMAGE_API_KEY",
+  "freeimage_api_key": "YOUR_FREEIMAGE_API_KEY",
+  "imgbb_api_key": "YOUR_IMGBB_API_KEY",
   "show_logo": 1,
   "logo_source": "image",
   "logo_image_path": "shared/logo.png",
@@ -182,7 +185,10 @@ Then edit `config.jsonc` with your credentials. JSONC supports `//` line comment
 | `audiodb_api_key` | [TheAudioDB API key](https://www.theaudiodb.com/) — free key: `523532` |
 | `mdblist_api_key` | [MDBList API key](https://mdblist.com/) — free tier, used for Rotten Tomatoes Critics and Audience scores |
 | `omdb_api_key` | [OMDB API key](https://www.omdbapi.com/apikey.aspx) — free tier, used as fallback for RT Critics score when MDBList has no data |
+| `image_provider` | Image host for screenshot/poster uploads: `"onlyimage"` (default), `"freeimage"`, `"imgbb"`, or `"pixhost"` (no key required) |
 | `onlyimage_api_key` | [onlyimage.org API key](https://onlyimage.org/user/settings/api) — register and find it in account settings |
+| `freeimage_api_key` | [freeimage.host API key](https://freeimage.host/page/api) — required when `image_provider="freeimage"` |
+| `imgbb_api_key` | [imgbb.com API key](https://api.imgbb.com/) — required when `image_provider="imgbb"` |
 | `template_layout_poster` | BBCode template for descriptions with poster (default: `templates/layout_poster.bbcode`) |
 | `template_layout_no_poster` | BBCode template for descriptions without poster (default: `templates/layout_no_poster.bbcode`) |
 | `template_fallback_movie` | Fallback template for movie descriptions (default: `templates/fallback_movie.bbcode`) |
@@ -240,7 +246,7 @@ run.bat [options] <directory> [config.jsonc]
 | 4 | `tmdb` | Search TMDB for metadata and BG title |
 | 5 | `imdb` | Fetch IMDB details (rating, cast, etc.) |
 | 6 | `describe` | Generate AI description (8 providers supported) |
-| 7 | `upload` | Upload screenshots to onlyimage.org |
+| 7 | `upload` | Upload screenshots to configured image host (onlyimage / freeimage / imgbb / pixhost) |
 | 8 | `description` | Build final BBCode torrent description |
 
 **Examples:**

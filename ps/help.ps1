@@ -34,7 +34,7 @@ Write-Host ('  ' + $grn + '3' + $r + ') screens     ' + $dash + ' Capture 3 scre
 Write-Host ('  ' + $grn + '4' + $r + ') tmdb        ' + $dash + ' Search TMDB for title, poster, BG title')
 Write-Host ('  ' + $grn + '5' + $r + ') imdb        ' + $dash + ' Fetch IMDB rating, cast, genres, RT scores')
 Write-Host ('  ' + $grn + '6' + $r + ') describe    ' + $dash + ' Generate AI description (Gemini/Ollama)')
-Write-Host ('  ' + $grn + '7' + $r + ') upload      ' + $dash + ' Upload screenshots to onlyimage.org')
+Write-Host ('  ' + $grn + '7' + $r + ') upload      ' + $dash + ' Upload screenshots to configured image host')
 Write-Host ('  ' + $grn + '8' + $r + ') description ' + $dash + ' Build final BBCode torrent description')
 Write-Host ''
 

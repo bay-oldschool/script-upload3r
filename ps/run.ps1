@@ -74,7 +74,7 @@ Available steps:
   4  tmdb        - Search TMDB for metadata and BG title
   5  imdb        - Fetch IMDB details (rating, cast, etc.)
   6  describe    - Generate AI description via Gemini
-  7  upload      - Upload screenshots to onlyimage.org
+  7  upload      - Upload screenshots to configured image host
   8  description - Build final BBCode torrent description
 
 Examples:

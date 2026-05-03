@@ -1,7 +1,7 @@
 #!/usr/bin/env pwsh
 <#
 .SYNOPSIS
-    Upload screenshots to onlyimage.org and save URLs to output file.
+    Upload screenshots via the configured image provider and save URLs to output file.
 .PARAMETER directory
     Path to the content directory (used to find matching screenshots).
 .PARAMETER configfile
@@ -37,9 +37,19 @@ if (-not (Test-Path -LiteralPath $configfile)) {
 }
 
 $config = (Get-Content -LiteralPath $configfile | Where-Object { $_ -notmatch '^\s*//' }) -join "`n" | ConvertFrom-Json
-$ApiKey = $config.onlyimage_api_key
-if (-not $ApiKey) {
-    Write-Host "Skipping: 'onlyimage_api_key' not configured in $configfile" -ForegroundColor Yellow
+
+. (Join-Path (Join-Path $PSScriptRoot '..') 'shared/image_upload.ps1')
+
+$provider = if ($config.image_provider) { ([string]$config.image_provider).ToLower() } else { 'onlyimage' }
+$keyField = switch ($provider) {
+    'onlyimage' { 'onlyimage_api_key' }
+    'freeimage' { 'freeimage_api_key' }
+    'imgbb'     { 'imgbb_api_key' }
+    'pixhost'   { $null }
+    default     { $null }
+}
+if ($keyField -and -not $config.$keyField) {
+    Write-Host "Skipping: '$keyField' not configured in $configfile (image_provider=$provider)" -ForegroundColor Yellow
     exit 0
 }
 
@@ -56,7 +66,7 @@ if (-not $found) {
     exit 0
 }
 
-Write-Host "Found $($found.Count) screenshot(s) to upload."
+Write-Host "Found $($found.Count) screenshot(s) to upload via $provider."
 Write-Host ""
 
 $OutputFile = Join-Path $OutDir "${Name}_screens.txt"
@@ -69,24 +79,13 @@ foreach ($f in $found) {
     Write-Host -NoNewline "Uploading: $filename ... "
 
     try {
-        $tmpFile = [System.IO.Path]::GetTempFileName() + ".png"
-        Copy-Item -LiteralPath $f -Destination $tmpFile -Force
-        $result = & curl.exe -s -X POST "https://onlyimage.org/api/1/upload" `
-            -H "X-API-Key: $ApiKey" `
-            -F "source=@$tmpFile" `
-            -F "format=json"
-        Remove-Item -LiteralPath $tmpFile -ErrorAction SilentlyContinue
-
-        $json = $result | ConvertFrom-Json
-        $url = if ($json.image -and $json.image.url) { $json.image.url } elseif ($json.url) { $json.url } else { $null }
-
-        if ($json.status_code -eq 200 -and $url) {
-            Write-Host $url
-            $urls.Add($url)
+        $r = Invoke-ImageUpload -Config $config -FilePath $f
+        if ($r.Success) {
+            Write-Host $r.Url
+            $urls.Add($r.Url)
             $success++
         } else {
-            $errTxt = if ($json.status_txt) { $json.status_txt } else { "unknown error" }
-            Write-Host "FAILED ($errTxt)" -ForegroundColor Yellow
+            Write-Host "FAILED ($($r.Error))" -ForegroundColor Yellow
             $fail++
         }
     } catch {

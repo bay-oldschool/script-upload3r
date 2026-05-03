@@ -384,24 +384,32 @@ function Render-ImageInline([string]$path, [int]$cols = 0) {
 # Render banner at the top of text
 if ($canRenderImages -and $bannerUrls.Count -gt 0) {
     $tmpBanner = Join-Path $env:TEMP "bbcode_banner.jpg"
+    Write-Host -NoNewline "Downloading banner... "
     try {
-        Invoke-WebRequest -Uri $bannerUrls[0] -OutFile $tmpBanner -ErrorAction Stop
+        & curl.exe -s -L --max-time 30 -o $tmpBanner $bannerUrls[0]
+        if ($LASTEXITCODE -ne 0) { throw "curl exit $LASTEXITCODE" }
+        Write-Host "ok" -ForegroundColor Green
         $rendered = Render-ImageInline $tmpBanner 0
         if ($rendered) { $text = $rendered + $text }
-    } catch { }
+    } catch { Write-Host "fail" -ForegroundColor Yellow }
     finally { Remove-Item $tmpBanner -Force -ErrorAction SilentlyContinue }
 }
 
 # Render poster before table
 if ($canRenderImages -and $posterUrls.Count -gt 0) {
     $posterArt = ''
+    $pIdx = 0
     foreach ($pUrl in $posterUrls) {
+        $pIdx++
         $tmpPoster = Join-Path $env:TEMP "bbcode_poster_preview.jpg"
+        Write-Host -NoNewline "Downloading poster $pIdx/$($posterUrls.Count)... "
         try {
-            Invoke-WebRequest -Uri $pUrl -OutFile $tmpPoster -ErrorAction Stop
+            & curl.exe -s -L --max-time 30 -o $tmpPoster $pUrl
+            if ($LASTEXITCODE -ne 0) { throw "curl exit $LASTEXITCODE" }
+            Write-Host "ok" -ForegroundColor Green
             $rendered = Render-ImageInline $tmpPoster 40
             if ($rendered) { $posterArt += $rendered }
-        } catch { }
+        } catch { Write-Host "fail" -ForegroundColor Yellow }
         finally { Remove-Item $tmpPoster -Force -ErrorAction SilentlyContinue }
     }
     if ($posterArt) {
@@ -471,9 +479,14 @@ $text = [regex]::Replace($text, '(\r?\n){4,}', "`n`n`n")
 if ($canRenderImages -and $screenUrls.Count -gt 0) {
     $tmpFiles = @()
     try {
+        $sIdx = 0
         foreach ($sUrl in $screenUrls) {
+            $sIdx++
             $tmpFile = Join-Path $env:TEMP "bbcode_screen_$($tmpFiles.Count).jpg"
-            Invoke-WebRequest -Uri $sUrl -OutFile $tmpFile -ErrorAction Stop
+            Write-Host -NoNewline "Downloading screenshot $sIdx/$($screenUrls.Count)... "
+            & curl.exe -s -L --max-time 30 -o $tmpFile $sUrl
+            if ($LASTEXITCODE -ne 0) { Write-Host "fail" -ForegroundColor Yellow; throw "curl exit $LASTEXITCODE" }
+            Write-Host "ok" -ForegroundColor Green
             $tmpFiles += $tmpFile
         }
         $screenArt = $null

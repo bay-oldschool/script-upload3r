@@ -375,32 +375,20 @@ if ($poster) {
     if ($poster -match '^https?://') {
         $PosterUrl = $poster
     } elseif (Test-Path -LiteralPath $poster -PathType Leaf) {
-        # Upload local file to onlyimage.org
-        $imgKey = $cfg.onlyimage_api_key
-        if ($imgKey) {
-            Write-Host -NoNewline "Uploading poster: $(Split-Path -Leaf $poster) ... "
-            try {
-                $tmpPoster = [System.IO.Path]::GetTempFileName() + [System.IO.Path]::GetExtension($poster)
-                Copy-Item -LiteralPath $poster -Destination $tmpPoster -Force
-                $result = & curl.exe -s -X POST "https://onlyimage.org/api/1/upload" `
-                    -H "X-API-Key: $imgKey" `
-                    -F "source=@$tmpPoster" `
-                    -F "format=json"
-                Remove-Item -LiteralPath $tmpPoster -ErrorAction SilentlyContinue
-                $json = $result | ConvertFrom-Json
-                $imgUrl = if ($json.image -and $json.image.url) { $json.image.url } elseif ($json.url) { $json.url } else { $null }
-                if ($json.status_code -eq 200 -and $imgUrl) {
-                    Write-Host $imgUrl
-                    $PosterUrl = $imgUrl
-                } else {
-                    $errTxt = if ($json.status_txt) { $json.status_txt } else { 'unknown error' }
-                    Write-Host "FAILED ($errTxt)" -ForegroundColor Yellow
-                }
-            } catch {
-                Write-Host "FAILED ($($_.Exception.Message))" -ForegroundColor Yellow
+        # Upload local file via configured image provider
+        . (Join-Path $RootDir 'shared/image_upload.ps1')
+        $provider = if ($cfg.image_provider) { ([string]$cfg.image_provider).ToLower() } else { 'onlyimage' }
+        Write-Host -NoNewline "Uploading poster ($provider): $(Split-Path -Leaf $poster) ... "
+        try {
+            $r = Invoke-ImageUpload -Config $cfg -FilePath $poster
+            if ($r.Success) {
+                Write-Host $r.Url
+                $PosterUrl = $r.Url
+            } else {
+                Write-Host "FAILED ($($r.Error))" -ForegroundColor Yellow
             }
-        } else {
-            Write-Host "Warning: 'onlyimage_api_key' not configured, cannot upload poster." -ForegroundColor Yellow
+        } catch {
+            Write-Host "FAILED ($($_.Exception.Message))" -ForegroundColor Yellow
         }
     } else {
         Write-Host "Warning: poster file not found: $poster" -ForegroundColor Yellow

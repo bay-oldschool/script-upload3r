@@ -18,10 +18,10 @@ if (-not $magick) {
 }
 
 $tmp = [System.IO.Path]::GetTempFileName() + '.img'
-try {
-    Invoke-WebRequest -Uri $Url -OutFile $tmp -UseBasicParsing -ErrorAction Stop
-} catch {
-    Write-Host "Download failed: $($_.Exception.Message)" -ForegroundColor Red
+$curlErr = & curl.exe -sS -L --max-time 60 -o $tmp $Url 2>&1
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "Download failed: $curlErr" -ForegroundColor Red
+    Remove-Item -LiteralPath $tmp -ErrorAction SilentlyContinue
     exit 1
 }
 

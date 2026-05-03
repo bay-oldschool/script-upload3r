@@ -1,5 +1,22 @@
 # Changelog
 
+## v5.3.0 — 2026-05-03
+
+### New Features
+- **Multi-provider image hosting** (`shared/image_upload.ps1`): screenshot and poster uploads now route through a shared helper that supports four hosts — `onlyimage` (Chevereto, default), `freeimage` (Chevereto on freeimage.host), `imgbb` (api.imgbb.com), and `pixhost` (no key required). Selected via the new `image_provider` config field; pixhost responses are normalized from thumbnail URL to full-size URL automatically. `screens_upload.ps1` and `description.ps1` (poster upload) both use the helper
+
+### Improvements
+- **Faster image downloads in preview/render** (`preview_bbcode.ps1`, `render_image.ps1`): replaced `Invoke-WebRequest` with `curl.exe` for the four binary-download call sites. PS5.1 redraws the IWR progress bar per chunk, slowing downloads by 10-100x; curl is up to two orders of magnitude faster. Added `Downloading ... ok/fail` status lines so the user sees progress before the buffered preview is flushed
+- **Real onlyimage upload errors surfaced** (`screens_upload.ps1`, `shared/image_upload.ps1`): captures HTTP status and curl exit code, detects HTML responses (maintenance/auth pages) and extracts the `h1`/`p`/`title` text, reads `$json.error.message` in addition to `status_txt`, and guarantees temp-file cleanup via `finally` — previously failures surfaced only as a cryptic JSON parser message
+- **CLAUDE.md PS5.1 non-ASCII rule broadened**: now explicitly covers em-dash, smart quotes, and accented letters in addition to Cyrillic/emoji
+
+### New Config Keys
+- `image_provider` — image host for screenshot and poster uploads: `"onlyimage"` (default), `"freeimage"`, `"imgbb"`, or `"pixhost"`
+- `freeimage_api_key` — [freeimage.host](https://freeimage.host/page/api) API key (required when `image_provider="freeimage"`)
+- `imgbb_api_key` — [imgbb.com](https://api.imgbb.com/) API key (required when `image_provider="imgbb"`)
+
+---
+
 ## v5.2.0 — 2026-04-18
 
 ### New Features
