@@ -1584,7 +1584,7 @@ if ($bgAudio) {
     $bgTags = "${bgTags}${bgFlag}${speaker}"
     Write-Host "Bulgarian audio detected"
 }
-if ($bgTags) { $UploadName = "${UploadName} ${bgTags}" }
+if ($bgTags -and -not $config.disable_bg_title_flags) { $UploadName = "${UploadName} ${bgTags}" }
 Write-Host "Upload name: $UploadName"
 
 # Detect .nfo file in torrent content

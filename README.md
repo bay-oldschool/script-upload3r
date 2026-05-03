@@ -80,6 +80,7 @@ Then edit `config.jsonc` with your credentials. JSONC supports `//` line comment
   "password": "",
   "two_factor_secret": "",
   "name_convention": 1,
+  "disable_bg_title_flags": 0,
   "type_id": 3,
   "resolution_id": 2,
   "tmdb": 0,
@@ -142,6 +143,7 @@ Then edit `config.jsonc` with your credentials. JSONC supports `//` line comment
 | `password` | Tracker login password — required for edit/delete/subtitle scripts |
 | `two_factor_secret` | Base32 TOTP secret for 2FA web login — leave empty if 2FA is disabled |
 | `name_convention` | `1` = UNIT3D format (spaces, normalized titles), `0` = raw torrent name |
+| `disable_bg_title_flags` | `0` = append Bulgarian audio/subtitle flags (🇧🇬🔤 🇧🇬🔊) to upload title (default), `1` = disable |
 | `category_id` | Tracker category ID (1 = Movies, etc.) |
 | `type_id` | Tracker type ID (e.g. 3 = Blu-ray) |
 | `resolution_id` | Default resolution ID (auto-detected from directory name or MediaInfo) |

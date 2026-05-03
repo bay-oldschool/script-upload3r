@@ -16,6 +16,8 @@
     // ─── Upload Defaults ───────────────────────────────────────
     // Name convention: 1 = UNIT3D format (spaces, normalized), 0 = raw torrent name
     "name_convention": 1,
+    // Append Bulgarian audio/subtitle flags to upload title: 0 = append (default), 1 = disable
+    "disable_bg_title_flags": 1,
     "type_id": 3,
     "resolution_id": 2,
     "tmdb": 0,
@@ -94,7 +96,7 @@
     // ─── Screenshot Hosting ────────────────────────────────────
     // Provider used for screenshot and poster uploads.
     // Options: "onlyimage", "freeimage", "imgbb", "pixhost" (pixhost needs no key)
-    "image_provider": "onlyimage",
+    "image_provider": "imgbb",
     "onlyimage_api_key": "YOUR_ONLYIMAGE_API_KEY",
     "freeimage_api_key": "YOUR_FREEIMAGE_API_KEY",
     "imgbb_api_key": "YOUR_IMGBB_API_KEY",
