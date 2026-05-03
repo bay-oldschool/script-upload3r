@@ -1,19 +1,21 @@
 # Changelog
 
-## v5.3.0 — 2026-05-03
+## v5.3.0 — 2026-05-04
 
 ### New Features
-- **Multi-provider image hosting** (`shared/image_upload.ps1`): screenshot and poster uploads now route through a shared helper that supports four hosts — `onlyimage` (Chevereto, default), `freeimage` (Chevereto on freeimage.host), `imgbb` (api.imgbb.com), and `pixhost` (no key required). Selected via the new `image_provider` config field; pixhost responses are normalized from thumbnail URL to full-size URL automatically. `screens_upload.ps1` and `description.ps1` (poster upload) both use the helper
+- **Multi-provider image hosting** (`shared/image_upload.ps1`): screenshot and poster uploads now route through a shared helper that supports four hosts — `onlyimage` (Chevereto), `freeimage` (Chevereto on freeimage.host), `imgbb` (api.imgbb.com, default), and `pixhost` (no key required). Selected via the new `image_provider` config field; pixhost responses are normalized from thumbnail URL to full-size URL automatically. `screens_upload.ps1` and `description.ps1` (poster upload) both use the helper
+- **Bulgarian audio/subtitle upload fields** (`description.ps1`, `upload.ps1`, `edit.ps1`): movie and TV uploads now send `bg_audio` and `bg_sub` (0/1) to the tracker. `description.ps1` auto-detects from MediaInfo (any Bulgarian audio track) and from embedded/external subtitle scan, writing the detected values into `_upload_request.txt`. `upload.ps1` shows them as defaults in the interactive prompts and includes them on both the upload POST and the cover/banner re-submit. `edit.ps1` reads the current values from the API (or edit-page checkboxes via web fallback), displays them in the current-values block, prompts the user, and includes them in the PATCH. Game/software/music skip the prompts and do not send the fields
+- **Optional suppression of BG title flags** (`description.ps1`): new `disable_bg_title_flags` config key (default `0` = append, `1` = skip) controls whether the Bulgarian audio/subtitle emoji suffix (e.g. `BG-flag + audio-speaker`) is appended to the upload title. Detection still runs, so the BDInfo notes inside the description body are unaffected
 
 ### Improvements
 - **Faster image downloads in preview/render** (`preview_bbcode.ps1`, `render_image.ps1`): replaced `Invoke-WebRequest` with `curl.exe` for the four binary-download call sites. PS5.1 redraws the IWR progress bar per chunk, slowing downloads by 10-100x; curl is up to two orders of magnitude faster. Added `Downloading ... ok/fail` status lines so the user sees progress before the buffered preview is flushed
 - **Real onlyimage upload errors surfaced** (`screens_upload.ps1`, `shared/image_upload.ps1`): captures HTTP status and curl exit code, detects HTML responses (maintenance/auth pages) and extracts the `h1`/`p`/`title` text, reads `$json.error.message` in addition to `status_txt`, and guarantees temp-file cleanup via `finally` — previously failures surfaced only as a cryptic JSON parser message
-- **CLAUDE.md PS5.1 non-ASCII rule broadened**: now explicitly covers em-dash, smart quotes, and accented letters in addition to Cyrillic/emoji
 
 ### New Config Keys
-- `image_provider` — image host for screenshot and poster uploads: `"onlyimage"` (default), `"freeimage"`, `"imgbb"`, or `"pixhost"`
+- `image_provider` — image host for screenshot and poster uploads: `"onlyimage"`, `"freeimage"`, `"imgbb"` (default), or `"pixhost"`
 - `freeimage_api_key` — [freeimage.host](https://freeimage.host/page/api) API key (required when `image_provider="freeimage"`)
 - `imgbb_api_key` — [imgbb.com](https://api.imgbb.com/) API key (required when `image_provider="imgbb"`)
+- `disable_bg_title_flags` — `0` = append Bulgarian audio/subtitle flags to upload title, `1` = disable
 
 ---
 
