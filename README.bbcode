@@ -83,6 +83,11 @@ install.bat
   "two_factor_secret": "",
   "name_convention": 1,
   "disable_bg_title_flags": 0,
+  "use_tmdb_screens": 0,
+  "tmdb_screens_per_row": 4,
+  "tmdb_screens_rows": 2,
+  "screen_count": 3,
+  "screenshot_img_size": 400,
   "type_id": 3,
   "resolution_id": 2,
   "tmdb": 0,
@@ -140,6 +145,10 @@ install.bat
 [*][b]two_factor_secret[/b] — Base32 TOTP секрет за 2FA вход (празно, ако 2FA е изключен)
 [*][b]name_convention[/b] — 1 = UNIT3D формат (интервали, нормализирани заглавия), 0 = оригинално име на торента
 [*][b]disable_bg_title_flags[/b] — 0 = добавя БГ аудио/субтитри флаговете (🇧🇬🔤 🇧🇬🔊) към името (по подразбиране), 1 = изключено
+[*][b]use_tmdb_screens[/b] — 0 = скрийншоти от видеото (по подразбиране), 1 = избор на TMDB backdrops като скрийншоти (пропуска стъпки 3 и 4, пуска стъпка 9)
+[*][b]tmdb_screens_per_row[/b] / [b]tmdb_screens_rows[/b] — размер на TMDB-screens grid-а (изображения на ред / редове на страница; по подразбиране 4 / 2)
+[*][b]screen_count[/b] — брой скрийншоти за стъпка 3 (по подразбиране 3)
+[*][b]screenshot_img_size[/b] — ширина (px) за [img=NN] таговете на скрийншотите в описанието (по подразбиране 400)
 [*][b]personal[/b] — 1 за персонален рилийз, 0 иначе
 [*][b]internal / featured / free / doubleup / sticky[/b] — staff-only полета: 0 = изкл, 1 = вкл, "ask" = пита при качване
 [*][b]fl_until / du_until / mod_queue_opt_in[/b] — допълнителни staff-only полета (0 / "ask")
@@ -198,7 +207,7 @@ run.bat [опции] <директория> [config.jsonc]
 .\ps\run.ps1 -tv "D:\media\Breaking.Bad.S01.1080p"
 
 # Само определени стъпки
-.\ps\run.ps1 -steps 4,5,8 "D:\media\Pacific.Rim.2013.1080p.BluRay"
+.\ps\run.ps1 -steps 5,6,8 "D:\media\Pacific.Rim.2013.1080p.BluRay"
 
 # Ръчно задаване на търсене
 .\ps\run.ps1 -query "Mamnik" -tv "D:\media\Mamnik.S01.1080p"
@@ -223,12 +232,13 @@ run.bat -steps 1,2,3 "D:\media\Pacific.Rim.2013.1080p.BluRay"
 [list]
 [*][b]1 / parse[/b] — MediaInfo от видео файловете
 [*][b]2 / create[/b] — Създаване на .torrent файл
-[*][b]3 / screens[/b] — Скрийншоти на 15%, 50%, 85%
-[*][b]4 / tmdb[/b] — Търсене в TMDB за метаданни и БГ заглавие
-[*][b]5 / imdb[/b] — IMDB детайли (рейтинг, актьори и др.)
-[*][b]6 / describe[/b] — AI описание (8 доставчика)
-[*][b]7 / upload[/b] — Качване на скрийншоти в избрания image хост (onlyimage / freeimage / imgbb / pixhost)
+[*][b]3 / screens[/b] — Скрийншоти, разпределени по продължителността (брой: screen_count, по подразбиране 3)
+[*][b]4 / upload[/b] — Качване на скрийншоти в избрания image хост (onlyimage / freeimage / imgbb / pixhost)
+[*][b]5 / tmdb[/b] — Търсене в TMDB за метаданни и БГ заглавие
+[*][b]6 / imdb[/b] — IMDB детайли (рейтинг, актьори и др.)
+[*][b]7 / describe[/b] — AI описание (8 доставчика)
 [*][b]8 / description[/b] — Сглобяване на финално BBCode описание
+[*][b]9 / tmdb_screens[/b] — Избор на TMDB backdrops като скрийншоти, ребилд на описанието (когато use_tmdb_screens=1)
 [/list]
 
 [b]Качване в тракера (след pipeline):[/b]

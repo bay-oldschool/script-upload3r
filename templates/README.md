@@ -107,7 +107,7 @@ Replace the `[table]...[/table]` block with a simpler linear layout:
 ```
 
 **Change screenshot thumbnail size:**
-In `screenshots.bbcode`, change `[img=400]` to `[img=600]`.
+Set `screenshot_img_size` in `config.jsonc` (default 400). The value is substituted into the `{{IMG_SIZE}}` placeholder in `screenshots.bbcode`.
 
 **Add a custom notice to all uploads:**
 Add a line anywhere in the layout templates:

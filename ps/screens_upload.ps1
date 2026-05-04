@@ -54,14 +54,14 @@ if ($keyField -and -not $config.$keyField) {
 }
 
 $Name = $baseName
-$screens = @(
-    (Join-Path $OutDir "${Name}_screen01.png"),
-    (Join-Path $OutDir "${Name}_screen02.png"),
-    (Join-Path $OutDir "${Name}_screen03.png")
-)
-
-$found = $screens | Where-Object { Test-Path -LiteralPath $_ }
-if (-not $found) {
+# Glob every <Name>_screenNN.png so screens_upload picks up whatever count
+# screens.ps1 produced (configurable via screen_count). Sorted numerically so
+# output URLs preserve capture order.
+$found = @(Get-ChildItem -LiteralPath $OutDir -File -ErrorAction SilentlyContinue |
+    Where-Object { $_.Name -match "^$([regex]::Escape($Name))_screen\d+\.png$" } |
+    Sort-Object -Property Name |
+    ForEach-Object { $_.FullName })
+if (-not $found -or $found.Count -eq 0) {
     Write-Host "Warning: no screenshots found in '$OutDir' for '$Name'. Run screens.ps1 first. Skipping." -ForegroundColor Yellow
     exit 0
 }

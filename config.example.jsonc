@@ -18,6 +18,16 @@
     "name_convention": 1,
     // Append Bulgarian audio/subtitle flags to upload title: 0 = append (default), 1 = disable
     "disable_bg_title_flags": 1,
+    // Use TMDB backdrops as screenshots (movie/tv): 0 = capture from video (default), 1 = pick from TMDB
+    // When 1, run.ps1 skips steps 3 (screens) and 7 (upload screens), runs step 9 to pick backdrops
+    "use_tmdb_screens": 0,
+    // Layout for the TMDB-screens picker (only used when use_tmdb_screens=1)
+    "tmdb_screens_per_row": 4,
+    "tmdb_screens_rows": 2,
+    // Number of screenshots to capture (step 3 / screens.ps1). Spread randomly across [10%, 90%] of the video duration.
+    "screen_count": 3,
+    // Width (px) used in [img=NN] tags for screenshot thumbnails in the description (default 400)
+    "screenshot_img_size": 400,
     "type_id": 3,
     "resolution_id": 2,
     "tmdb": 0,

@@ -12,13 +12,13 @@
     Switch to enable DHT for torrent creation.
 .PARAMETER steps
     Comma-separated list of steps to run (default: all).
-    Steps: 1/parse, 2/create, 3/screens, 4/tmdb, 5/imdb, 6/describe, 7/upload, 8/description
+    Steps: 1/parse, 2/create, 3/screens, 4/upload, 5/tmdb, 6/imdb, 7/describe, 8/description, 9/tmdb_screens
 .PARAMETER help
     Show help message with available options and examples.
 .EXAMPLE
     .\run.ps1 "D:\media\Pacific.Rim.2013.1080p.BluRay"
 .EXAMPLE
-    .\run.ps1 -steps 4,5,8 "D:\media\Pacific.Rim.2013.1080p.BluRay"
+    .\run.ps1 -steps 5,6,8 "D:\media\Pacific.Rim.2013.1080p.BluRay"
 .EXAMPLE
     .\run.ps1 -tv -steps tmdb,imdb,describe "D:\media\Dexter.Original.Sin.S01"
 #>
@@ -68,27 +68,28 @@ Options:
   -help              Show this help message
 
 Available steps:
-  1  parse       - Extract MediaInfo from video files
-  2  create      - Create .torrent file
-  3  screens     - Take screenshots at 15%, 50%, 85%
-  4  tmdb        - Search TMDB for metadata and BG title
-  5  imdb        - Fetch IMDB details (rating, cast, etc.)
-  6  describe    - Generate AI description via Gemini
-  7  upload      - Upload screenshots to configured image host
-  8  description - Build final BBCode torrent description
+  1  parse        - Extract MediaInfo from video files
+  2  create       - Create .torrent file
+  3  screens      - Take screenshots spread across the runtime
+  4  upload       - Upload screenshots to configured image host
+  5  tmdb         - Search TMDB for metadata and BG title
+  6  imdb         - Fetch IMDB details (rating, cast, etc.)
+  7  describe     - Generate AI description via Gemini
+  8  description  - Build final BBCode torrent description
+  9  tmdb_screens - Pick TMDB backdrops as screens, rebuild description (use_tmdb_screens=1)
 
 Examples:
   # Run all steps (default)
   .\run.ps1 "D:\media\Pacific.Rim.2013.1080p.BluRay"
 
   # Run only TMDB + IMDB + description steps
-  .\run.ps1 -steps 4,5,8 "D:\media\Pacific.Rim.2013.1080p.BluRay"
+  .\run.ps1 -steps 5,6,8 "D:\media\Pacific.Rim.2013.1080p.BluRay"
 
   # Run steps 1 through 3
   .\run.ps1 -steps 1,2,3 "D:\media\Pacific.Rim.2013.1080p.BluRay"
 
   # TV show with specific steps
-  .\run.ps1 -tv -steps 4,5,6 "D:\media\Dexter.Original.Sin.S01"
+  .\run.ps1 -tv -steps 5,6,7 "D:\media\Dexter.Original.Sin.S01"
 
   # Override search query (e.g. Cyrillic title not found by Latin name)
   .\run.ps1 -tv -query "Mamnik BG" "D:\media\Mamnik.S01\Mamnik.s01e09.mp4"
@@ -97,7 +98,7 @@ Examples:
   .\run.ps1 -steps parse,screens,description "D:\media\Pacific.Rim.2013.1080p.BluRay"
 
   # From cmd
-  run.bat -steps 4,5,8 "D:\media\Pacific.Rim.2013.1080p.BluRay"
+  run.bat -steps 5,6,8 "D:\media\Pacific.Rim.2013.1080p.BluRay"
 "@
     exit 0
 }
@@ -126,28 +127,36 @@ $configfile = (Resolve-Path -LiteralPath $configfile).Path
 # Resolve step names to numbers
 function Resolve-Step($s) {
     switch ($s.Trim().ToLower()) {
-        '1'           { return 1 }
-        'parse'       { return 1 }
-        '2'           { return 2 }
-        'create'      { return 2 }
-        '3'           { return 3 }
-        'screens'     { return 3 }
-        '4'           { return 4 }
-        'tmdb'        { return 4 }
-        '5'           { return 5 }
-        'imdb'        { return 5 }
-        '6'           { return 6 }
-        'describe'    { return 6 }
-        '7'           { return 7 }
-        'upload'      { return 7 }
-        '8'           { return 8 }
-        'description' { return 8 }
+        '1'            { return 1 }
+        'parse'        { return 1 }
+        '2'            { return 2 }
+        'create'       { return 2 }
+        '3'            { return 3 }
+        'screens'      { return 3 }
+        '4'            { return 4 }
+        'upload'       { return 4 }
+        '5'            { return 5 }
+        'tmdb'         { return 5 }
+        '6'            { return 6 }
+        'imdb'         { return 6 }
+        '7'            { return 7 }
+        'describe'     { return 7 }
+        '8'            { return 8 }
+        'description'  { return 8 }
+        '9'            { return 9 }
+        'tmdb_screens' { return 9 }
+        'tmdb-screens' { return 9 }
         default { Write-Host "Error: unknown step: '$s'" -ForegroundColor Red; exit 1 }
     }
 }
 
-# Build list of steps to run
-$runSteps = @(1,2,3,4,5,6,7,8)
+# Read config (for use_tmdb_screens default chain)
+$cfgRaw = (Get-Content -LiteralPath $configfile | Where-Object { $_ -notmatch '^\s*//' }) -join "`n" | ConvertFrom-Json
+$useTmdbScreens = $cfgRaw.use_tmdb_screens -and [int]$cfgRaw.use_tmdb_screens -ne 0
+
+# Build list of steps to run. When use_tmdb_screens=1, skip native screenshot
+# capture (3) and screenshot upload (4) and add the TMDB picker step (9).
+$runSteps = if ($useTmdbScreens) { @(1,2,5,6,7,8,9) } else { @(1,2,3,4,5,6,7,8) }
 if ($steps) {
     $runSteps = ($steps -join ',').Split(',') | ForEach-Object { Resolve-Step $_ }
 }
@@ -189,29 +198,29 @@ if ($runSteps -contains 3) {
 }
 
 if ($runSteps -contains 4) {
+    Show-Step "Upload Screenshots"
+    & "$PSScriptRoot/ps/screens_upload.ps1" $directory $configfile
+    Write-Host ""
+}
+
+if ($runSteps -contains 5) {
     Show-Step "TMDB Search"
     $tmdbArgs = @{ directory = $directory } + $metaArgs
     & "$PSScriptRoot/ps/tmdb.ps1" @tmdbArgs
     Write-Host ""
 }
 
-if ($runSteps -contains 5) {
+if ($runSteps -contains 6) {
     Show-Step "IMDB Lookup"
     $imdbArgs = @{ directory = $directory } + $metaArgs
     & "$PSScriptRoot/ps/imdb.ps1" @imdbArgs
     Write-Host ""
 }
 
-if ($runSteps -contains 6) {
+if ($runSteps -contains 7) {
     Show-Step "AI Description"
     $descArgs = @{ directory = $directory } + $metaArgs
     & "$PSScriptRoot/ps/describe.ps1" @descArgs
-    Write-Host ""
-}
-
-if ($runSteps -contains 7) {
-    Show-Step "Upload Screenshots"
-    & "$PSScriptRoot/ps/screens_upload.ps1" $directory $configfile
     Write-Host ""
 }
 
@@ -220,6 +229,14 @@ if ($runSteps -contains 8) {
     $descBuildArgs = @{ directory = $directory; configfile = $configfile }
     if ($tv.IsPresent) { $descBuildArgs['tv'] = $true }
     & "$PSScriptRoot/ps/description.ps1" @descBuildArgs
+    Write-Host ""
+}
+
+if ($runSteps -contains 9) {
+    Show-Step "Pick TMDB Screens"
+    $tsArgs = @{ directory = $directory; configfile = $configfile }
+    if ($tv.IsPresent) { $tsArgs['tv'] = $true }
+    & "$PSScriptRoot/ps/tmdb_screens.ps1" @tsArgs
     Write-Host ""
 }
 

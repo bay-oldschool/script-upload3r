@@ -89,6 +89,7 @@ set "LOGO_CLR_R=160"
 set "LOGO_CLR_D=210"
 set "LOGO_CLR_L=95"
 set "LOGO_IMG_CFG="
+set "USE_TMDB_SCREENS=0"
 for /f "usebackq delims=" %%L in ("%~dp0config.jsonc") do (
     set "LINE=%%L"
     if not "!LINE:show_logo=!"=="!LINE!" for /f "tokens=2 delims=:" %%V in ("!LINE!") do set "TMPVAL=%%V" & set "TMPVAL=!TMPVAL: =!" & set "SHOW_LOGO=!TMPVAL:,=!"
@@ -98,6 +99,7 @@ for /f "usebackq delims=" %%L in ("%~dp0config.jsonc") do (
     if not "!LINE:logo_color_letters=!"=="!LINE!" for /f "tokens=2 delims=:" %%V in ("!LINE!") do set "TMPVAL=%%V" & set "TMPVAL=!TMPVAL: =!" & set "LOGO_CLR_R=!TMPVAL:,=!"
     if not "!LINE:logo_color_dark=!"=="!LINE!" for /f "tokens=2 delims=:" %%V in ("!LINE!") do set "TMPVAL=%%V" & set "TMPVAL=!TMPVAL: =!" & set "LOGO_CLR_D=!TMPVAL:,=!"
     if not "!LINE:logo_color_light=!"=="!LINE!" for /f "tokens=2 delims=:" %%V in ("!LINE!") do set "TMPVAL=%%V" & set "TMPVAL=!TMPVAL: =!" & set "LOGO_CLR_L=!TMPVAL:,=!"
+    if not "!LINE:use_tmdb_screens=!"=="!LINE!" for /f "tokens=2 delims=:" %%V in ("!LINE!") do set "TMPVAL=%%V" & set "TMPVAL=!TMPVAL: =!" & set "USE_TMDB_SCREENS=!TMPVAL:,=!"
 )
 :: Parse logo_image_path separately (value may contain colons / slashes). Skip commented lines.
 for /f "usebackq tokens=* delims=" %%L in (`findstr /r /c:"^[ 	]*\"logo_image_path\"" "%~dp0config.jsonc"`) do set "_LIP_LINE=%%L"
@@ -500,17 +502,30 @@ echo %BLUE%   STEPS SELECTION%RESET%
 echo %BLUE%========================================%RESET%
 echo.
 echo  Available steps:
-echo    1) !I_LIST! parse       - Extract MediaInfo
-echo    2) !I_MAGNET! create      - Create .torrent file
-echo    3) !I_CAMERA! screens     - Take screenshots
-echo    4) !I_SEARCH! tmdb        - Search TMDB for metadata
-echo    5) !I_STAR! imdb        - Fetch IMDB details
-echo    6) !I_AI! describe    - Generate AI description
-echo    7) !I_CLOUD! upload      - Upload screenshots
-echo    8) !I_MEMO! description - Build final BBCode description
+echo    1) !I_LIST! parse        - Extract MediaInfo
+echo    2) !I_MAGNET! create       - Create .torrent file
+if "!USE_TMDB_SCREENS!"=="1" (
+    echo    3^) !I_CAMERA! screens      - Take screenshots %YELLOW%[skipped]%RESET%
+    echo    4^) !I_CLOUD! upload       - Upload screenshots %YELLOW%[skipped]%RESET%
+) else (
+    echo    3^) !I_CAMERA! screens      - Take screenshots
+    echo    4^) !I_CLOUD! upload       - Upload screenshots
+)
+echo    5) !I_SEARCH! tmdb         - Search TMDB for metadata
+echo    6) !I_STAR! imdb         - Fetch IMDB details
+echo    7) !I_AI! describe     - Generate AI description
+echo    8) !I_MEMO! description  - Build final BBCode description
+if "!USE_TMDB_SCREENS!"=="1" (
+    echo    9^) !I_CAMERA! tmdb_screens - Pick TMDB backdrops as screens, rebuild description
+)
 echo.
-echo  Enter comma-separated step numbers (e.g. 4,5,8)
-echo  or press Enter to run ALL steps.
+if "!USE_TMDB_SCREENS!"=="1" (
+    echo  Default ^(Enter^): runs 1,2,5,6,7,8,9 ^(skips 3 and 4^).
+) else (
+    echo  Default ^(Enter^): runs all 8 steps.
+)
+echo  Enter comma-separated step numbers (e.g. 5,6,8)
+echo  or press Enter to run the default chain.
 echo  Type 0 to go back.
 echo.
 set "STEPS_INPUT="

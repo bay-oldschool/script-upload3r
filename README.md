@@ -8,11 +8,11 @@ A set of scripts for preparing and uploading media to Unit3D-based torrent track
 
 1. **MediaInfo** — parses all video files and saves a formatted text report
 2. **Create Torrent** — creates a private `.torrent` file with auto-calculated piece size and progress bar
-3. **Screenshots** — captures 3 PNG screenshots at randomized timestamps
-4. **TMDB Search** — fetches title, poster/banner URLs, and Bulgarian title
-5. **IMDB Lookup** — fetches IMDB ID, rating, genres, runtime, director, and cast
-6. **AI Description** — generates a rich Bulgarian BBCode description via 8 supported AI providers
-7. **Upload Screenshots** — uploads screenshots to the configured image host (onlyimage / freeimage / imgbb / pixhost) and saves direct URLs
+3. **Screenshots** — captures PNG screenshots spread across the runtime (count configurable via `screen_count`)
+4. **Upload Screenshots** — uploads screenshots to the configured image host (onlyimage / freeimage / imgbb / pixhost) and saves direct URLs
+5. **TMDB Search** — fetches title, poster/banner URLs, and Bulgarian title
+6. **IMDB Lookup** — fetches IMDB ID, rating, genres, runtime, director, and cast
+7. **AI Description** — generates a rich Bulgarian BBCode description via 8 supported AI providers
 8. **Build Description** — assembles the final BBCode torrent description file
 
 ### Game Pipeline
@@ -81,6 +81,11 @@ Then edit `config.jsonc` with your credentials. JSONC supports `//` line comment
   "two_factor_secret": "",
   "name_convention": 1,
   "disable_bg_title_flags": 0,
+  "use_tmdb_screens": 0,
+  "tmdb_screens_per_row": 4,
+  "tmdb_screens_rows": 2,
+  "screen_count": 3,
+  "screenshot_img_size": 400,
   "type_id": 3,
   "resolution_id": 2,
   "tmdb": 0,
@@ -144,6 +149,11 @@ Then edit `config.jsonc` with your credentials. JSONC supports `//` line comment
 | `two_factor_secret` | Base32 TOTP secret for 2FA web login — leave empty if 2FA is disabled |
 | `name_convention` | `1` = UNIT3D format (spaces, normalized titles), `0` = raw torrent name |
 | `disable_bg_title_flags` | `0` = append Bulgarian audio/subtitle flags (🇧🇬🔤 🇧🇬🔊) to upload title (default), `1` = disable |
+| `use_tmdb_screens` | `0` = capture screenshots from video (default), `1` = pick TMDB backdrops as screenshots (skips steps 3 and 4, runs step 9) |
+| `tmdb_screens_per_row` | TMDB-screens picker grid width — images per row (default 4) |
+| `tmdb_screens_rows` | TMDB-screens picker grid height — rows per page (default 2) |
+| `screen_count` | Number of screenshots to capture in step 3 (default 3) |
+| `screenshot_img_size` | Width (px) used in `[img=NN]` tags for screenshot thumbnails (default 400) |
 | `category_id` | Tracker category ID (1 = Movies, etc.) |
 | `type_id` | Tracker type ID (e.g. 3 = Blu-ray) |
 | `resolution_id` | Default resolution ID (auto-detected from directory name or MediaInfo) |
@@ -244,12 +254,13 @@ run.bat [options] <directory> [config.jsonc]
 |---|------|-------------|
 | 1 | `parse` | Extract MediaInfo from video files |
 | 2 | `create` | Create .torrent file |
-| 3 | `screens` | Take PNG screenshots at randomized timestamps |
-| 4 | `tmdb` | Search TMDB for metadata and BG title |
-| 5 | `imdb` | Fetch IMDB details (rating, cast, etc.) |
-| 6 | `describe` | Generate AI description (8 providers supported) |
-| 7 | `upload` | Upload screenshots to configured image host (onlyimage / freeimage / imgbb / pixhost) |
+| 3 | `screens` | Take PNG screenshots spread across runtime (`screen_count`, default 3) |
+| 4 | `upload` | Upload screenshots to configured image host (onlyimage / freeimage / imgbb / pixhost) |
+| 5 | `tmdb` | Search TMDB for metadata and BG title |
+| 6 | `imdb` | Fetch IMDB details (rating, cast, etc.) |
+| 7 | `describe` | Generate AI description (8 providers supported) |
 | 8 | `description` | Build final BBCode torrent description |
+| 9 | `tmdb_screens` | Pick TMDB backdrops as screens, rebuild description (`use_tmdb_screens=1`) |
 
 **Examples:**
 
@@ -261,7 +272,7 @@ run.bat [options] <directory> [config.jsonc]
 .\ps\run.ps1 -tv "D:\media\Breaking.Bad.S01.1080p"
 
 # Run only specific steps
-.\ps\run.ps1 -steps 4,5,8 "D:\media\Pacific.Rim.2013.1080p.BluRay"
+.\ps\run.ps1 -steps 5,6,8 "D:\media\Pacific.Rim.2013.1080p.BluRay"
 
 # Run steps by name
 .\ps\run.ps1 -steps tmdb,imdb,description "D:\media\Pacific.Rim.2013.1080p.BluRay"

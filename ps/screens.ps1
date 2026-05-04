@@ -1,18 +1,27 @@
 #!/usr/bin/env pwsh
 <#
 .SYNOPSIS
-    Takes 3 screenshots from the main video file in a directory.
+    Takes screenshots from the main video file in a directory.
 .PARAMETER directory
     Path to the content directory containing the video.
 .PARAMETER outputdir
     Optional output directory.
+.PARAMETER count
+    Override the number of screenshots to take (default: read screen_count from
+    config.jsonc, falling back to 3).
+.PARAMETER configfile
+    Path to JSONC config file (default: ../config.jsonc relative to this script).
 #>
 param(
     [Parameter(Mandatory = $true, Position = 0)]
     [string]$directory,
 
     [Parameter(Position = 1)]
-    [string]$outputdir
+    [string]$outputdir,
+
+    [int]$count = 0,
+
+    [string]$configfile
 )
 
 $ErrorActionPreference = 'Stop'
@@ -78,16 +87,39 @@ if ($duration -eq 0) {
 }
 Write-Host "Duration: ${duration}s"
 
+# Resolve screenshot count: explicit -count parameter wins, otherwise read
+# screen_count from config.jsonc, falling back to 3.
+$screenCount = $count
+if ($screenCount -le 0) {
+    if (-not $configfile) { $configfile = "$PSScriptRoot/../config.jsonc" }
+    if (Test-Path -LiteralPath $configfile) {
+        try {
+            $cfg = (Get-Content -LiteralPath $configfile | Where-Object { $_ -notmatch '^\s*//' }) -join "`n" | ConvertFrom-Json
+            if ($cfg.screen_count) { $screenCount = [int]$cfg.screen_count }
+        } catch { }
+    }
+}
+if ($screenCount -le 0) { $screenCount = 3 }
+if ($screenCount -gt 30) { $screenCount = 30 }
+
+# Spread N timestamps across [10%, 90%] of duration with per-slot jitter so the
+# captures are evenly distributed and never overlap each other.
 $rng = New-Object System.Random
-$timestamps = @(
-    [int]($duration * ($rng.Next(10, 21) / 100.0)),
-    [int]($duration * ($rng.Next(35, 46) / 100.0)),
-    [int]($duration * ($rng.Next(65, 76) / 100.0))
-)
+$timestamps = @()
+$slot = 80.0 / $screenCount
+for ($i = 0; $i -lt $screenCount; $i++) {
+    $low  = 10.0 + $i * $slot
+    $high = 10.0 + ($i + 1) * $slot
+    $lowI  = [int][Math]::Floor($low)
+    $highI = [int][Math]::Ceiling($high)
+    if ($highI -le $lowI) { $highI = $lowI + 1 }
+    $pct = $rng.Next($lowI, $highI + 1)
+    $timestamps += [int]($duration * ($pct / 100.0))
+}
 $name = $baseName
 
 New-Item -Path $outputdir -ItemType Directory -ErrorAction SilentlyContinue
-Write-Host "Taking screenshots..."
+Write-Host "Taking $screenCount screenshot(s)..."
 
 for ($i = 0; $i -lt $timestamps.Length; $i++) {
     $screenNum = ($i + 1).ToString("00")

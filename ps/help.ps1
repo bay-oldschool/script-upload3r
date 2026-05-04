@@ -28,14 +28,15 @@ Write-Host '  Runs 8 pipeline steps, then uploads to tracker with one click.'
 Write-Host ''
 
 Write-Host ($b + $blue + 'PIPELINE STEPS' + $r)
-Write-Host ('  ' + $grn + '1' + $r + ') parse       ' + $dash + ' Extract MediaInfo from video files')
-Write-Host ('  ' + $grn + '2' + $r + ') create      ' + $dash + ' Create private .torrent file')
-Write-Host ('  ' + $grn + '3' + $r + ') screens     ' + $dash + ' Capture 3 screenshots (15%, 50%, 85%)')
-Write-Host ('  ' + $grn + '4' + $r + ') tmdb        ' + $dash + ' Search TMDB for title, poster, BG title')
-Write-Host ('  ' + $grn + '5' + $r + ') imdb        ' + $dash + ' Fetch IMDB rating, cast, genres, RT scores')
-Write-Host ('  ' + $grn + '6' + $r + ') describe    ' + $dash + ' Generate AI description (Gemini/Ollama)')
-Write-Host ('  ' + $grn + '7' + $r + ') upload      ' + $dash + ' Upload screenshots to configured image host')
-Write-Host ('  ' + $grn + '8' + $r + ') description ' + $dash + ' Build final BBCode torrent description')
+Write-Host ('  ' + $grn + '1' + $r + ') parse        ' + $dash + ' Extract MediaInfo from video files')
+Write-Host ('  ' + $grn + '2' + $r + ') create       ' + $dash + ' Create private .torrent file')
+Write-Host ('  ' + $grn + '3' + $r + ') screens      ' + $dash + ' Capture screenshots spread across runtime')
+Write-Host ('  ' + $grn + '4' + $r + ') upload       ' + $dash + ' Upload screenshots to configured image host')
+Write-Host ('  ' + $grn + '5' + $r + ') tmdb         ' + $dash + ' Search TMDB for title, poster, BG title')
+Write-Host ('  ' + $grn + '6' + $r + ') imdb         ' + $dash + ' Fetch IMDB rating, cast, genres, RT scores')
+Write-Host ('  ' + $grn + '7' + $r + ') describe     ' + $dash + ' Generate AI description (Gemini/Ollama)')
+Write-Host ('  ' + $grn + '8' + $r + ') description  ' + $dash + ' Build final BBCode torrent description')
+Write-Host ('  ' + $grn + '9' + $r + ') tmdb_screens ' + $dash + ' Pick TMDB backdrops as screens (when use_tmdb_screens=1)')
 Write-Host ''
 
 Write-Host ($b + $blue + 'TYPICAL WORKFLOW' + $r)
@@ -66,7 +67,7 @@ Write-Host ''
 Write-Host ('  ' + $b + 'Options:' + $r)
 Write-Host ('    ' + $grn + '-tv' + $r + '            Search for TV shows instead of movies')
 Write-Host ('    ' + $grn + '-dht' + $r + '           Enable DHT in torrent (private by default)')
-Write-Host ('    ' + $grn + '-steps 4,5,8' + $r + '   Run only specific steps (by number or name)')
+Write-Host ('    ' + $grn + '-steps 5,6,8' + $r + '   Run only specific steps (by number or name)')
 Write-Host ('    ' + $grn + '-query "text"' + $r + '  Override TMDB/IMDB search query')
 Write-Host ('    ' + $grn + '-season N' + $r + '      Override season number')
 Write-Host ''
@@ -91,7 +92,7 @@ Write-Host ('  ' + $dim + '# TV show, all steps' + $r)
 Write-Host ('  ' + $cyan + 'run.bat -tv "D:\media\Breaking.Bad.S01.1080p"' + $r)
 Write-Host ''
 Write-Host ('  ' + $dim + '# Only TMDB + IMDB + description' + $r)
-Write-Host ('  ' + $cyan + 'run.bat -steps 4,5,8 "D:\media\Pacific.Rim.2013.1080p.BluRay"' + $r)
+Write-Host ('  ' + $cyan + 'run.bat -steps 5,6,8 "D:\media\Pacific.Rim.2013.1080p.BluRay"' + $r)
 Write-Host ''
 Write-Host ('  ' + $dim + '# Override search query (useful for non-Latin titles)' + $r)
 Write-Host ('  ' + $cyan + 'run.bat -query "Mamnik" -tv "D:\media\Mamnik.S01.1080p"' + $r)

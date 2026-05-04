@@ -1076,17 +1076,17 @@ if ($screenUrls.Count -gt 0) {
         else { Write-Host "Warning: Screenshot URL not reachable, skipping: $url" -ForegroundColor Yellow }
     }
     if ($validScreens.Count -gt 0) {
+        $imgSize = if ($config.screenshot_img_size) { [int]$config.screenshot_img_size } else { 400 }
         if ($tmplScreenshots) {
             # Split on ---IMAGE--- to get wrapper and per-image templates
             $parts = $tmplScreenshots -split '---IMAGE---'
             $wrapperTmpl = $parts[0].Trim()
-            $imageTmpl = if ($parts.Count -gt 1) { $parts[1].Trim() } else { '[url={{URL}}][img=400]{{URL}}[/img][/url]' }
-            $imgTags = ($validScreens | ForEach-Object { $imageTmpl.Replace('{{URL}}', $_) }) -join ''
+            $imageTmpl = if ($parts.Count -gt 1) { $parts[1].Trim() } else { '[url={{URL}}][img={{IMG_SIZE}}]{{URL}}[/img][/url]' }
+            $imgTags = ($validScreens | ForEach-Object { $imageTmpl.Replace('{{URL}}', $_).Replace('{{IMG_SIZE}}', [string]$imgSize) }) -join ' '
             $screenshotsBBCode = Expand-Template $wrapperTmpl @{ 'SCREENSHOT_IMAGES' = $imgTags }
         } else {
-            $screenshotsBBCode = "[center]"
-            foreach ($url in $validScreens) { $screenshotsBBCode += "[url=${url}][img=400]${url}[/img][/url]" }
-            $screenshotsBBCode += "[/center]"
+            $imgs = ($validScreens | ForEach-Object { "[url=$_][img=${imgSize}]$_[/img][/url]" }) -join ' '
+            $screenshotsBBCode = "[center]${imgs}[/center]"
         }
     }
 }

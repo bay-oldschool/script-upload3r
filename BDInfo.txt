@@ -25,6 +25,9 @@
 🎨 Параметричен генератор за лого (shared/make_logo.ps1) с gradient fill и soft glow
 📄 Автоматичен NFO за игри и софтуер от файлово съдържание (primary file, формат, размер, IGDB линк)
 🖼️ Многобройни image хостове за скрийншоти и постери — onlyimage, freeimage, imgbb, pixhost (без ключ)
+🖼️ TMDB-screens режим — избор на backdrops като скрийншоти през интерактивен sixel grid (use_tmdb_screens=1)
+🔢 Конфигуруем брой скрийншоти (screen_count) и ширина за thumbnail-ите в описанието (screenshot_img_size)
+🇧🇬 Изпраща bg_audio и bg_sub полета при качване/редакция (с авто-засичане) и опция за изключване на БГ флаговете в името
 
 Keywords:
-MediaInfo анализ, Автоматични скрийншоти чрез ffmpeg, генериране на BBCode описания с AI (Gemini/Ollama/Groq/Grok/Cerebras/SambaNova/OpenRouter/HuggingFace), качване в UNIT3D тракер, нормализация на имена, разпознаване на български аудио и субтитри, създаване на торент файлове, търсене в TMDB/IMDB/IGDB, игри, софтуер, музика, Deezer, MusicBrainz, Discogs, Last.fm, TheAudioDB, iTunes, Twitch API, BBCode шаблони, NFO генератор, 2FA TOTP, Windows 10 съвместимост, TLS 1.2, параметрично лого, image хостване (onlyimage, freeimage, imgbb, pixhost).
+MediaInfo анализ, Автоматични скрийншоти чрез ffmpeg, генериране на BBCode описания с AI (Gemini/Ollama/Groq/Grok/Cerebras/SambaNova/OpenRouter/HuggingFace), качване в UNIT3D тракер, нормализация на имена, разпознаване на български аудио и субтитри, bg_audio, bg_sub, създаване на торент файлове, търсене в TMDB/IMDB/IGDB, TMDB backdrops като скрийншоти, sixel grid picker, конфигуруем брой скрийншоти, screen_count, screenshot_img_size, игри, софтуер, музика, Deezer, MusicBrainz, Discogs, Last.fm, TheAudioDB, iTunes, Twitch API, BBCode шаблони, NFO генератор, 2FA TOTP, Windows 10 съвместимост, TLS 1.2, параметрично лого, image хостване (onlyimage, freeimage, imgbb, pixhost).

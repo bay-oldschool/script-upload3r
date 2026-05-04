@@ -235,7 +235,10 @@ try {
     $sortedPosters   = Sort-TmdbImages $imagesResp.posters
     $sortedBackdrops = Sort-TmdbImages $imagesResp.backdrops
     $topPosters      = @($sortedPosters   | Select-Object -First 10)
-    $topBackdrops    = @($sortedBackdrops | Select-Object -First 10)
+    # When use_tmdb_screens=1 we expose the full backdrop list so step 9 can
+    # let the user pick screenshots from any of them (not just the top 10).
+    $useAllBackdrops = $config.use_tmdb_screens -and [int]$config.use_tmdb_screens -ne 0
+    $topBackdrops    = if ($useAllBackdrops) { @($sortedBackdrops) } else { @($sortedBackdrops | Select-Object -First 10) }
 
     $bgPoster = $null
     $bgBanner = $null
